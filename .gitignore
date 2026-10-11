@@ -14,3 +14,6 @@ playwright-report/
 # Supabase CLI local stack
 supabase/.temp/
 .branches/
+
+# Acceptance run scratch (stack facts written by globalSetup)
+tests/.tmp/
