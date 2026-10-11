@@ -1,0 +1,16 @@
+# DES runtime coordination state — machine-local, never a source artifact
+.nwave/des/commit.lock
+.nwave/des/logs/
+.nwave/des/probe/
+
+# Node / tooling
+node_modules/
+dist/
+test-results/
+playwright-report/
+.env
+.env.local
+
+# Supabase CLI local stack
+supabase/.temp/
+.branches/
