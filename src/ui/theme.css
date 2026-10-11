@@ -1,0 +1,825 @@
+/* The light theme of the final canvas: palette, type and the shapes of the
+   balance card, the All square chip, the empty-ledger hint and the two bottom
+   buttons. Geometry that the oracle judges (the boxes side by side, the buttons
+   each on their own half near the bottom) lives here. */
+
+:root {
+  --page: #f4f7f6;
+  --ink: #0d1f1c;
+  --ink-soft: #5b6b68;
+
+  --you: #24508a;
+  --you-tint: #e7eef7;
+  --you-dash: rgba(36, 80, 138, 0.35);
+
+  --abbaas: #0f6f68;
+  --abbaas-tint: #e0f0ed;
+  --abbaas-dash: rgba(15, 111, 104, 0.38);
+  --abbaas-pill: #dcebe8;
+
+  --title-font: 'Manrope', system-ui, sans-serif;
+  --body-font: 'Source Sans 3', system-ui, sans-serif;
+
+  --side: 16px;
+  --bottom-gap: 20px;
+  --button-height: 60px;
+
+  /* The reading column. The app fills a phone's width but for its side margins,
+     and on anything wider stops growing and centres instead, so the two boxes
+     and the two bottom buttons stay a thumb's width apart. */
+  --column: 560px;
+
+  /* How far the bottom controls sit above the bottom edge: the design's gap plus
+     whatever Android's gesture bar claims, which is 0 where there is no bar. */
+  --bottom-safe: calc(var(--bottom-gap) + env(safe-area-inset-bottom));
+
+  /* The width a control fixed to the viewport takes so that it lines up with the
+     column above it: the column's width, or the screen's when that is narrower,
+     less the side margins on both sides. */
+  --bar-width: calc(min(100%, var(--column)) - var(--side) * 2);
+
+  /* The least a thumb can reliably hit. */
+  --touch: 44px;
+
+  /* The one curve every motion in the app travels on, and the length of an
+     entrance: the top of the design's 360 to 520 ms entrance band. */
+  --curve: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --enter-ms: 520ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--body-font);
+}
+
+/* Every screen is painted into this one element, so the column is declared once
+   here rather than on each screen. It takes the whole width of a phone and caps
+   at the column on anything wider, with equal margins either side. */
+#app {
+  width: 100%;
+  max-width: var(--column);
+  margin: 0 auto;
+}
+
+.screen {
+  /* 100dvh, not 100vh: the dynamic height is the one that excludes Chrome's
+     retracting address bar, so a screen never hides behind it. */
+  min-height: 100dvh;
+  padding: 20px var(--side);
+  /* Room for the fixed bottom buttons, so nothing hides behind them. */
+  padding-bottom: calc(var(--button-height) + var(--bottom-safe) + var(--bottom-gap) + 24px);
+}
+
+/* Room for the bottom buttons AND the Saved message that can sit above them, so
+   the last entry is never hidden behind either. */
+.home {
+  padding-bottom: calc(var(--button-height) + var(--bottom-safe) + var(--bottom-gap) + 104px);
+}
+
+.home h1 {
+  margin: 0 0 16px;
+  font-family: var(--title-font);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* --- The balance card: You on the left, Abbaas on the right. --- */
+
+.boxes {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.box {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 12px;
+  border-radius: 20px;
+  text-align: center;
+}
+
+.box[data-state='empty'] {
+  background: transparent;
+  border: 2px dashed var(--abbaas-dash);
+}
+
+.box[data-box='you'][data-state='empty'] {
+  border-color: var(--you-dash);
+}
+
+.box[data-box='you'][data-state='filled'] {
+  background: var(--you-tint);
+  border: 2px solid transparent;
+}
+
+.box[data-box='abbaas'][data-state='filled'] {
+  background: var(--abbaas-tint);
+  border: 2px solid transparent;
+}
+
+.box-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.box[data-box='you'] .box-pill {
+  background: #eef2f1;
+  color: var(--ink);
+}
+
+.box[data-box='abbaas'] .box-pill {
+  background: var(--abbaas-pill);
+  color: var(--abbaas);
+}
+
+.box-amount {
+  font-family: var(--title-font);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.box[data-box='you'] .box-amount {
+  color: var(--you);
+}
+
+.box[data-box='abbaas'] .box-amount {
+  color: var(--abbaas);
+}
+
+.box[data-state='empty'] .box-amount {
+  color: var(--ink-soft);
+}
+
+.box-caption {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.square-chip {
+  margin: 14px auto 0;
+  width: fit-content;
+  /* A chip is a thumb-sized thing like every other, even though this one only
+     reports: 44 px is the floor the whole app keeps. */
+  min-height: var(--touch);
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #e8eceb;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.totals {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* --- The empty-ledger hint. --- */
+
+.empty-hint {
+  margin-top: 28px;
+  padding: 18px;
+  border-radius: 18px;
+  background: #ffffff;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.empty-hint p {
+  margin: 0;
+}
+
+.empty-hint-title {
+  margin-bottom: 6px !important;
+  font-family: var(--title-font);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* --- The Saved message with Undo, right after a save. ---
+   It sits in the gap above the two bottom buttons and never covers them: its
+   own bottom edge stops a clear 12 px short of the buttons' top edge, so both
+   stay fully visible and tappable. */
+
+.saved-message {
+  position: fixed;
+  /* Fixed to the viewport, so it is centred on the viewport and sized to the
+     column rather than stretched across a wide screen. */
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--bar-width);
+  bottom: calc(var(--bottom-safe) + var(--button-height) + 12px);
+  margin: 0;
+  padding: 10px 10px 10px 16px;
+  border-radius: 18px;
+  background: var(--ink);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.saved-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.undo-button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--ink);
+  font-family: var(--title-font);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The button's word is drawn here, while its accessible name comes from
+   aria-label, so the message's own text stays the Saved sentence alone. */
+.undo-button::after {
+  content: 'Undo';
+}
+
+.undo-error {
+  flex: 1 1 100%;
+  color: #ffd9d4;
+  font-size: 13px;
+}
+
+/* --- The two bottom buttons, fixed to the bottom of the screen. --- */
+
+/* The buttons are fixed to the viewport so a long ledger scrolls under them, but
+   they belong to the column: centred, column-wide, and lifted clear of Android's
+   gesture bar by whatever that bar claims. */
+.bottom-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--bar-width);
+  bottom: var(--bottom-safe);
+  display: flex;
+  gap: 12px;
+}
+
+.bottom-button {
+  flex: 1 1 0;
+  height: var(--button-height);
+  border: 0;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #ffffff;
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bottom-button[data-action='send'] {
+  background: var(--you);
+}
+
+.bottom-button[data-action='receive'] {
+  background: var(--abbaas);
+}
+
+.bottom-arrow {
+  font-size: 18px;
+}
+
+/* --- The entry list keeps value 1's shape until value 6 reshapes it. --- */
+
+.home ul[data-entries] {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  position: relative;
+}
+
+/* The centre line runs down the middle of the list. Entries sit beside it,
+   never across it: a send wholly in the right half, a repayment wholly in the
+   left half. */
+.home ul[data-entries]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: #dfe6e4;
+}
+
+.entry {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+/* The halves. The gap past 50% keeps the whole element off the line. */
+.entry[data-side='right'] {
+  margin-left: calc(50% + 6px);
+}
+
+.entry[data-side='left'] {
+  margin-right: calc(50% + 6px);
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.entry-node {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.entry[data-side='right'] .entry-node {
+  background: var(--you);
+}
+
+.entry[data-side='left'] .entry-node {
+  background: var(--abbaas);
+}
+
+.entry-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.entry-amount {
+  font-family: var(--title-font);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.entry-party {
+  font-size: 13px;
+}
+
+.entry-detail {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* --- Value 6: the day groups, and what each entry leaves behind it. --- */
+
+.day-group {
+  list-style: none;
+  margin: 0 0 6px;
+}
+
+/* The date sits astride the centre line, so the two halves read under one day. */
+.day-label {
+  margin: 0 0 12px;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #e8eceb;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  /* Above the centre line, which runs behind the whole list. */
+  position: relative;
+}
+
+.day-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The standing after an entry reads across the line from the money that caused
+   it: a send on the right is answered on the left, and a repayment the other
+   way about. It is taken out of the flow so it can never widen either half. */
+.entry-after {
+  position: absolute;
+  top: 2px;
+  max-width: calc(100% - 12px);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.entry[data-side='right'] .entry-after {
+  right: calc(100% + 12px);
+  text-align: right;
+}
+
+.entry[data-side='left'] .entry-after {
+  left: calc(100% + 12px);
+  text-align: left;
+}
+
+.entry-after[data-after-holder='abbaas'] {
+  color: var(--abbaas);
+}
+
+.entry-after[data-after-holder='you'] {
+  color: var(--you);
+}
+
+.entry-after[data-after-holder='none'] {
+  color: var(--ink-soft);
+}
+
+/* --- The blue full-screen send form. --- */
+
+.send-form {
+  position: relative;
+  /* The dynamic viewport height, so the colour reaches the bottom edge whether
+     Chrome's address bar is showing or retracted. */
+  min-height: 100dvh;
+  background: var(--you);
+  color: #ffffff;
+}
+
+.send-form h1 {
+  margin: 8px 0 4px;
+  font-family: var(--title-font);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.form-standing {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.form-close {
+  border: 0;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.currency-switch {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.currency-button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.currency-button[aria-pressed='true'] {
+  background: #ffffff;
+  color: var(--you);
+  border-color: #ffffff;
+}
+
+.field {
+  margin-top: 18px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.35);
+  padding-bottom: 6px;
+}
+
+.field-prefix {
+  font-family: var(--title-font);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.field-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--body-font);
+  font-size: 18px;
+  padding: 4px 0;
+}
+
+.field-input:focus {
+  outline: none;
+}
+
+/* --- The rate and the dollar value it works out: MVR only (value 4). --- */
+
+/* Empty while the currency is USD, so a USD form carries neither the rate
+   label nor a data-usd element. */
+.rate-slot:empty {
+  display: none;
+}
+
+.worked-card {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.worked-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.worked-value {
+  font-family: var(--title-font);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.paid-to {
+  margin-top: 22px;
+}
+
+.group-label {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip,
+.new-person-button,
+.add-person-button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--body-font);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  background: #ffffff;
+  color: var(--you);
+  border-color: #ffffff;
+  font-weight: 700;
+}
+
+.new-person-button {
+  margin-top: 8px;
+}
+
+.new-person {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.form-message {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #ffe0e0;
+}
+
+.preview {
+  margin-top: 24px;
+}
+
+.preview-boxes {
+  display: flex;
+  gap: 12px;
+}
+
+.preview-box {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 10px;
+  border-radius: 18px;
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+}
+
+.preview-box[data-state='filled'] {
+  background: rgba(255, 255, 255, 0.16);
+  border-style: solid;
+  border-color: transparent;
+}
+
+.preview-pill {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.preview-amount {
+  font-family: var(--title-font);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.save-button {
+  margin-top: 26px;
+  width: 100%;
+  height: var(--button-height);
+  border: 0;
+  border-radius: 20px;
+  background: #ffffff;
+  color: var(--you);
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.save-button:disabled {
+  background: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: default;
+}
+
+/* --- The teal full-screen receive form (value 5). ---
+
+   It borrows every field, preview and save shape from the send form and changes
+   only the colour the owner reads it on: teal is the side the money comes from,
+   as Abbaas's box and the Receive button already are. */
+
+.receive-form {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--abbaas);
+  color: #ffffff;
+}
+
+.receive-form h1 {
+  margin: 8px 0 4px;
+  font-family: var(--title-font);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* The chosen currency and the save button invert to the form's own teal. */
+.receive-form .currency-button[aria-pressed='true'] {
+  color: var(--abbaas);
+}
+
+.receive-form .save-button {
+  color: var(--abbaas);
+}
+
+.receive-form .save-button:disabled {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* --- The quick amounts: one row of taps that fill the amount. --- */
+
+.quick-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.quick-button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--body-font);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* --- The note before saving. ---
+
+   Empty whenever the payment leaves money with him, so there is no
+   data-receive-note element to read at all. */
+
+.receive-note-slot:empty {
+  display: none;
+}
+
+.receive-note {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* --- Value 9: the motion of opening, saving and a balance that changes. ---
+
+   Nothing but transform, opacity and clip-path moves, so no frame of any motion
+   can force the page to lay itself out again. While a motion runs its element
+   carries data-motion, which is both the handle these rules hang on and the one
+   thing an observer needs to see that it is running. */
+
+[data-motion] {
+  will-change: transform, opacity, clip-path;
+}
+
+/* The new entry arrives from 44 px toward its own side. Where it starts and
+   where it settles are set as inline styles by motion.ts; the time it takes and
+   the curve it travels are declared here, once, with every other entrance.
+
+   The transition hangs on the travelling phase alone. The entry carries
+   data-motion="enter" from the moment it is first held back, 380 ms before it
+   moves, so that it never sits displaced without declaring itself; were the
+   transition live during that hold, the entry would animate INTO its start
+   state - fading out and sliding away - instead of simply being put there. */
+.entry[data-motion='enter'][data-enter='travel'] {
+  transition:
+    transform var(--enter-ms) var(--curve),
+    opacity var(--enter-ms) var(--curve);
+}
+
+/* The reveal circle and the counting amounts are stepped frame by frame in
+   motion.ts rather than transitioned: a browser interpolating clip-path from
+   circle(30px ...) to circle(150% ...) resolves the radius into a calc() that
+   says nothing about where the circle is, and the form root must be readable as
+   a plain circle at the point that was tapped. Nothing clips by default, so a
+   form that is not revealing carries no clip-path at all. */
+.screen {
+  clip-path: none;
+}
+
+/* A device that has asked for less motion gets none. motion.ts already refuses
+   to run, sets no data-motion and clips nothing; this is the belt to that
+   braces, so no transition declared anywhere can start behind its back. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
