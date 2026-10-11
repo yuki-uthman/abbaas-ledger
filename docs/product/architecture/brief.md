@@ -4,7 +4,7 @@
 Stand up the walking skeleton of the Abbaas Ledger: a static bundle built with Vite that signs the owner in once per phone through Supabase Auth, keeps that session so later visits open straight to Home, and reads a ledger that Postgres row-level security restricts to the signed-in account.
 
 ### Constraints
-- The repository holds no code yet (git ls-files lists only .gitignore, .nwave/des/handover.json and docs/product/brief.md), so every target is new.
+- The toolchain scaffold is committed (8c83fa9): package.json with type module and the scripts build, test:unit and test:acceptance (playwright test --config tests/playwright.config.ts), its lockfile, tsconfig.json for src, tsconfig.node.json for tests and vite.config.ts, vite.config.ts with base from PAGES_BASE, index.html with an empty #app root loading /src/main.ts, an empty src/main.ts, and supabase/config.toml with project_id abbaas-ledger on ports 54420-54424 (api 54421, db 54422, inbucket 54424) with studio, storage, realtime, analytics, edge runtime and pooler off. Value 1 needs no change to those files except src/main.ts.
 - Only the Supabase project URL and anon key reach the bundle, as build-time VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY; the service-role key exists only in the acceptance support, outside the browser, and never in the repository.
 - The meals project's local Supabase stack is running on this machine and holds ports 54321, 54322, 54324 and 54327; this project needs its own project_id and port block or supabase start collides with it.
 - There is no sign-out control in version one (brief, out of scope), so a second account is observed on a second phone, which is a separate browser with its own storage.
@@ -14,11 +14,6 @@ Stand up the walking skeleton of the Abbaas Ledger: a static bundle built with V
 ### Targets
 | Path | Decision | Reason |
 |---|---|---|
-| `package.json` | CREATE_NEW | Declares the toolchain (vite, typescript, @supabase/supabase-js, supabase CLI, @playwright/test, vitest) and the scripts dev, build, test:unit and test:acceptance the verification argv run. test:acceptance is exactly 'playwright test --config tests/playwright.config.ts'. |
-| `tsconfig.json` | CREATE_NEW | Strict TypeScript for src/ and tests/ so npm run build typechecks before bundling. |
-| `vite.config.ts` | CREATE_NEW | Builds the static bundle into dist/ with base taken from PAGES_BASE (default '/'), so the same build serves locally and from the GitHub Pages project path. |
-| `index.html` | CREATE_NEW | The single page that loads src/main.ts and holds the app root; the viewport meta allows width=device-width. |
-| `supabase/config.toml` | CREATE_NEW | Local stack with project_id "abbaas-ledger" and its own port block from 54421 upward (api 54421, db 54422, studio 54423, inbucket 54424, analytics disabled or moved off 54327), email sign-up through the API kept on for the service role, email confirmations off. |
 | `supabase/migrations/0001_account_scoped_ledger.sql` | CREATE_NEW | Creates the whole ledger schema once, people and entries, each owned by auth.uid() under row-level security; later values add screens, not ownership. |
 | `src/ports/identity.ts` | CREATE_NEW | Identity port in domain terms: the current account from the persisted session, sign-in with email and password, and their named Refusal and Retry outcomes. |
 | `src/ports/ledger-store.ts` | CREATE_NEW | LedgerStore port in domain terms: read the signed-in account's entries with their person, newest first; read outcomes Retry when unreachable. |
@@ -27,7 +22,7 @@ Stand up the walking skeleton of the Abbaas Ledger: a static bundle built with V
 | `src/adapters/supabase/ledger-store.ts` | CREATE_NEW | Implements LedgerStore over PostgREST: selects entries joined to people with no user_id filter, so row-level security alone decides what is visible. |
 | `src/ui/sign-in.ts` | CREATE_NEW | Sign-in screen as a function from state to DOM: labelled Email and Password fields, a Sign in button, named messages for wrong credentials and an unreachable server. |
 | `src/ui/home.ts` | CREATE_NEW | Minimal Home as a function from the read ledger to DOM: one element per entry carrying data-entry, its person's name carrying data-person, its USD amount, and a named retry notice when the read failed. |
-| `src/main.ts` | CREATE_NEW | Composition root: builds the adapters, resolves the persisted session before the first paint, then renders the sign-in screen or Home, and Home after a successful sign-in. |
+| `src/main.ts` | EXTEND | Replaces the scaffold's empty composition root: builds the adapters, resolves the persisted session before the first paint, then renders the sign-in screen or Home, and Home after a successful sign-in. |
 
 ### Paradigm
 functional
@@ -86,4 +81,5 @@ Oracle target locator: `tests/acceptance/sign-in-and-own-ledger.spec.ts`
 
 Verification command: `npm ci`
 Verification command: `npx playwright install chromium`
-Verification command: `npm run test:acceptance`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
