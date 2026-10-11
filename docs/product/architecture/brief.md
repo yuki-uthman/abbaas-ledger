@@ -83,3 +83,73 @@ Verification command: `npm ci`
 Verification command: `npx playwright install chromium`
 Verification command: `npm run build`
 Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
+## Value 2: empty Home with the two balance boxes and the Send and Receive buttons
+
+### Purpose
+Give Home its confirmed shape before any money is recorded: the two-box balance card (You left, Abbaas right) with both boxes empty, an All square chip, a hint that names Send and Receive, and the two bottom buttons.
+
+### Constraints
+- Value 1 already renders Home from src/ui/home.ts and composes it in src/main.ts; this value extends those files rather than adding a second Home.
+- The data-entry and data-person attribute contract from value 1 stays in force for the entry list.
+- Tapping Send and Receive opens their forms only in values 3 and 5; here the buttons exist, are labelled and sit in place.
+- The visual reference is the final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi, light theme: background #f4f7f6, owner blue #24508a with box tint #e7eef7, Abbaas teal #0f6f68 with box tint #e0f0ed, Manrope for titles and numbers, Source Sans 3 for body.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/domain/balance.ts` | CREATE_NEW | Pure function from the account's entries to the balance: the sum of send usd_cents minus the sum of receive usd_cents, projected as who holds the money (abbaas when positive, you when negative, none at zero) and the unsigned amount in cents; also the two totals sent and paid back. |
+| `src/ui/home.ts` | EXTEND | Adds the balance card with the two boxes, the All square chip, the empty-ledger hint and the bottom Send and Receive buttons above the existing entry list. |
+| `src/ui/theme.css` | CREATE_NEW | The light palette, type and shape tokens of the final canvas and the styles of the balance card, chip, hint and bottom buttons. |
+| `index.html` | EXTEND | Loads Manrope (700, 800) and Source Sans 3 (400, 600, 700) from Google Fonts. |
+| `src/main.ts` | EXTEND | Imports theme.css so Vite bundles it, and passes the computed balance to Home. |
+
+### Paradigm
+functional
+
+### Decisions
+- Balance rule: balance_cents = sum(usd_cents of kind send) - sum(usd_cents of kind receive). Positive means Abbaas holds the owner's money, negative means the owner holds Abbaas's money, zero is All square. The amount shown is never signed.
+- Stable attribute contract for the balance card, kept by every later value: the owner's box carries data-box="you" and Abbaas's box carries data-box="abbaas"; each box carries data-state="filled" or data-state="empty" and data-amount="<cents>" (0 when empty); only the holder's box is filled. The All square chip carries data-square and is present exactly when the balance is zero.
+- An empty box shows the text $0 and a dashed outline in its person's colour (rgba(36,80,138,0.35) for You, rgba(15,111,104,0.38) for Abbaas); its caption is 'nothing of his' for You and 'nothing of yours' for Abbaas. A filled box (arriving with value 3) shows the amount as $1,234.56 on its person's tint.
+- Each box shows a name pill: 'You' (ink #0d1f1c on light text) in the left box and 'Abbaas' (teal on #dcebe8) in the right box. The You box is the left one and the Abbaas box the right one at every width.
+- With no entries, an empty-ledger hint carrying data-empty-hint says 'No entries yet' and 'Tap Send when you pay someone on Abbaas's behalf. Tap Receive when he pays you back.'
+- The bottom buttons are fixed to the bottom of the screen: Send (background #24508a, white text, up-right arrow) on the left half and Receive (background #0f6f68, white text, down-left arrow) on the right half, each 60 px tall with 20 px radius, 16 px from the sides and 20 px from the bottom, carrying data-action="send" and data-action="receive" and accessible names Send and Receive.
+- Totals line under the boxes: 'You sent $X' and 'He paid back $Y' from the same pure function, shown as $0.00 for an empty ledger.
+- UI stays functions from state to DOM; balance.ts has no DOM and no Supabase import and is unit-testable with vitest.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Home and the composition root are created by value 1 in this same Request and are extended in place; no existing behaviour is moved. Value 1's data-entry and data-person contract is kept as a constraint.
+
+### Agreement analysis
+Not applicable: No schema or port changes; Home reads the same LedgerStore result value 1 defined.
+
+### Boundaries
+- Driving port: The built bundle's DOM after sign-in: Home.
+- Driven port: LedgerStore: the account's entries over PostgREST under row-level security.
+- Dependency direction: home.ts depends on balance.ts and the LedgerStore result type; balance.ts depends on nothing.
+- Failure: Condition: Reading the ledger fails. | Outcome: Retry | Observation: Home shows the alert 'Could not load the ledger. Try again.' and neither box claims a balance: both boxes are absent or carry data-state="empty" with no All square chip, so a failed read is never shown as All square.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: With no entries, Home shows both boxes as empty dashed outlines with $0 (You on the left, Abbaas on the right), an All square chip, a hint to use Send or Receive, a Send button at the bottom left and a Receive button at the bottom right.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle, and creates a new account with no people and no entries. A Chromium context at 360 by 780 opens the start URL and signs in as that account.
+
+Expected: Home shows an element with data-box="you" and one with data-box="abbaas", both with data-state="empty", data-amount="0" and the text $0; the you box's bounding box lies left of the abbaas box's on the same row; an element with data-square reads All square; an element with data-empty-hint contains both Send and Receive; the data-action="send" control is named Send and its centre is in the left half of the viewport and within the bottom 120 px; the data-action="receive" control is named Receive and its centre is in the right half and within the bottom 120 px; there are zero data-entry elements and no alert.
+
+Falsifier: Swapping the boxes, filling a box, dropping the chip, or placing a button outside its bottom quarter fails the check; a ledger read failure would show an alert and no All square chip, which also fails.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/empty-home.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
