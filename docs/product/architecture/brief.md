@@ -153,3 +153,474 @@ Verification command: `npm ci`
 Verification command: `npx playwright install chromium`
 Verification command: `npm run build`
 Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
+## Value 3: send in USD to a saved or new person
+
+### Purpose
+Let the owner record money sent on Abbaas's behalf in US dollars from a full-screen blue form, choosing who was paid from a saved list or adding a new person, and see the result on Home: the entry right of the centre line and Abbaas's box filled with the new balance.
+
+### Constraints
+- Values 1 and 2 provide the session, LedgerStore reads, Home with the two boxes (data-box, data-state, data-amount), the bottom Send button (data-action="send") and the entry list (data-entry, data-person); this value extends those files.
+- The schema from value 1 already holds people (name, name_key unique per account) and entries (kind, currency, amount_minor, rate, usd_cents, entry_date, saved_at, note, person_id, person_name); no migration is needed.
+- The bundle never sends user_id: inserts rely on the column default auth.uid() and row-level security.
+- MVR entry is value 4; this value's currency switch shows USD selected and MVR may be present but is not exercised.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/domain/money.ts` | CREATE_NEW | Pure parsing of typed amounts ('250', '250.5', '1,000.00') into whole minor units, rejecting empty, zero, negative and more than two decimals, and formatting cents as $1,234.56. |
+| `src/domain/send-draft.ts` | CREATE_NEW | Pure send draft: amount text, chosen person, date and note; whether it can be saved; the entry it becomes; and the balance after saving it, for the preview boxes. |
+| `src/ports/ledger-store.ts` | EXTEND | Adds listPeople, addPerson and addEntry with their Refusal and Retry outcomes. |
+| `src/adapters/supabase/ledger-store.ts` | EXTEND | Implements listPeople, addPerson (returning the existing person when the normalised name already exists) and addEntry over PostgREST. |
+| `src/ui/send-form.ts` | CREATE_NEW | The blue full-screen send form as a function from the draft and the saved people to DOM. |
+| `src/ui/home.ts` | EXTEND | Places each entry on the centre line (sends on the right half) and fills the holder's box with the unsigned balance and its caption. |
+| `src/ui/theme.css` | EXTEND | Styles of the send form, chips, preview boxes, filled boxes and the centre line. |
+| `src/main.ts` | EXTEND | Navigates between Home and the send form with location.hash (#send), so Android's back button closes the form, and reloads the ledger after a save. |
+
+### Paradigm
+functional
+
+### Decisions
+- Navigation: tapping data-action="send" sets location.hash to #send and shows the send form in place of Home; Close (aria-label Close) and the browser back button return to Home; a successful save returns to Home and re-reads the ledger.
+- Send form contract: its root carries data-form="send" and a blue background #24508a with white text; the title reads 'Money sent for Abbaas'; the top line reads 'Abbaas has $X of yours' or 'You have $X of his' or 'All square' from the current balance.
+- Currency switch: two buttons named USD and MVR with aria-pressed; USD is selected when the form opens.
+- Amount field: an input labelled 'Amount sent' with inputmode=decimal; the USD prefix shown beside it is '$'.
+- Paid to: one button per saved person carrying data-person-chip="<people.id>" and the person's name, ordered by name; the chosen one has aria-pressed="true". A button named 'New person' reveals an input labelled 'Name' and a button named 'Add'; Add creates the person (or picks the existing one whose normalised name matches) and selects it. A person is typed once and chosen thereafter.
+- Date: an input type=date labelled 'Date' whose value starts as today in the device's time zone (YYYY-MM-DD) and can be changed.
+- Note: an optional text input labelled 'Note'.
+- After saving preview: two boxes carrying data-preview-box="you" and data-preview-box="abbaas" with data-state and data-amount computed from the current balance plus this draft, updating on every keystroke.
+- Save: a button whose accessible name starts with 'Save entry' and shows the amount (e.g. 'Save entry · $250.00'); it is disabled until the amount parses to more than zero and a person is chosen.
+- A saved USD send stores kind 'send', currency 'USD', amount_minor equal to usd_cents (cents), rate null, entry_date from the Date field, note or null, person_id and person_name as chosen.
+- Centre line: Home draws a vertical line down the middle of the entry list; a send's element (data-entry) sits wholly in the right half, beside a round blue node with a right-pointing arrow, and shows the amount, 'to <name>' (with data-person) and its detail ('Paid in USD').
+- Filled box: the holder's box carries data-state="filled" and data-amount="<cents>", shows the amount as $1,234.56 with no plus or minus sign, and the caption 'has your money' in Abbaas's box or 'have his money' in the owner's box; the other box stays empty.
+- Failures: a save that cannot reach the server keeps the form and its values and shows 'Could not save. Try again.'; adding a person that cannot be saved shows 'Could not add this person. Try again.' and keeps the typed name.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Home, the ports and the composition root are created by values 1 and 2 in this same Request and are extended in place; no behaviour is moved.
+
+### Agreement analysis
+Not applicable: The schema and the attribute contracts were fixed by values 1 and 2 and are only consumed here.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home's Send button, the send form and Home after saving.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: send-form.ts and home.ts depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+- Failure: Condition: Adding a new person fails. | Outcome: Retry | Observation: The name input keeps the typed name and shows 'Could not add this person. Try again.'
+- Failure: Condition: The amount is empty, zero or not a number, or no person is chosen. | Outcome: Refusal | Observation: The Save entry button is disabled and nothing is stored.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Tapping Send opens the blue form; the owner enters an amount in USD, picks a paid-to person from the saved list or adds a new one, keeps or changes the date, optionally adds a note, and sees the after-saving boxes; saving returns to Home where the entry sits right of the centre line and Abbaas's box is filled with the new balance, shown without a sign, with the caption has your money.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle, creates an account and, through the service role, one saved person 'Mariyam Nisha' and no entries. A Chromium context at 360 by 780 signs in, taps Send, keeps USD, types 250.00 in Amount sent, taps the Mariyam Nisha chip, keeps the Date, types 'School fees' in Note and taps Save entry. It then taps Send again, taps New person, types 'Ahmed Shifaz', taps Add, types 100 and taps Save entry. Finally it reloads the page and opens Send once more.
+
+Expected: The form carries data-form="send" with USD pressed and the Date field equal to today's date; after typing 250.00 the abbaas preview box shows data-state="filled" and data-amount="25000"; Save entry is disabled before a person is chosen and enabled after. After the first save Home shows one data-entry element wholly in the right half of the viewport containing $250.00 and Mariyam Nisha, the abbaas box has data-state="filled", data-amount="25000", the text $250.00 with no '+' or '-' and the caption has your money, and the you box is empty. After the second save there are two data-entry elements, both in the right half, and the abbaas box reads data-amount="35000" and $350.00. After the reload both entries are still shown, and the reopened form offers chips named Ahmed Shifaz and Mariyam Nisha. Read through the service role, the account has two entries, both kind send, currency USD, rate null, amount_minor equal to usd_cents (25000 and 10000), entry_date today, and person_name Mariyam Nisha and Ahmed Shifaz, and the first has note 'School fees'.
+
+Falsifier: Placing sends on the left, signing the balance, leaving the box empty, not storing the new person, storing a different amount or date, or enabling Save without a person fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-usd.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+## Value 4: send in MVR at a typed rate
+
+### Purpose
+Let the owner record a send in Maldivian rufiyaa with the rate they got that day, see the dollar value worked out as they type, and store the MVR amount, the rate and that USD value together.
+
+### Constraints
+- Value 3's send form (data-form="send", USD and MVR buttons with aria-pressed, 'Amount sent', person chips, Date, Note, preview boxes, Save entry) and Home's centre-line entries are extended here.
+- entries.rate is numeric(12,4), rufiyaa per one US dollar, required exactly when currency is MVR; amount_minor holds laari for MVR.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/domain/money.ts` | EXTEND | Adds parsing of a typed rate (up to four decimals, greater than zero) and the conversion of laari at a rate to US cents, rounded half up, in integer arithmetic. |
+| `src/domain/send-draft.ts` | EXTEND | The draft carries a currency and a rate; an MVR draft's USD value and after-saving balance use the conversion. |
+| `src/ui/send-form.ts` | EXTEND | Shows the rate field and the live dollar value when MVR is selected, hides them for USD. |
+| `src/ui/home.ts` | EXTEND | An MVR entry's detail line reads 'MVR 10,000 at 20.00' under its USD amount. |
+| `src/ui/theme.css` | EXTEND | Styles of the rate field and the dollar value card. |
+
+### Paradigm
+functional
+
+### Decisions
+- Conversion: usd_cents = round half up of (amount_laari / rate). With the rate held as an integer r4 = rate x 10000, usd_cents = floor((2 x amount_laari x 10000 + r4) / (2 x r4)), computed with BigInt or exact integers so no floating-point drift can change a cent. Example: MVR 10,000 (1,000,000 laari) at 20 gives 50,000 cents ($500.00); MVR 1 at 8 gives 13 cents ($0.13); MVR 100 at 3 gives 3,333 cents ($33.33).
+- Switching to MVR shows an input labelled 'Rate (MVR per $1)' with inputmode=decimal and an output element carrying data-usd that shows the dollar value as $1,234.56, updating on every keystroke of amount or rate; while the amount or rate does not parse, data-usd shows $0.00 and Save entry is disabled. The amount prefix reads 'MVR'.
+- Switching back to USD hides the rate field and data-usd; the typed amount is kept and read as dollars.
+- A saved MVR send stores currency 'MVR', amount_minor in laari, rate as typed (to four decimals), usd_cents from the conversion, and the chosen person, date and note as for USD.
+- Entry detail on Home: 'MVR <amount> at <rate>', the amount grouped with commas and shown without decimals when whole (MVR 10,000) or with two otherwise (MVR 10,000.50), the rate with at least two and at most four decimals (20.00, 15.40, 15.4250). A USD send's detail reads 'Paid in USD'.
+- The Save entry button's name shows the USD value (Save entry · $500.00) and the preview boxes use the USD value.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: The files are created by earlier values of this same Request and extended in place; no behaviour is moved, and the attribute contracts of earlier values are kept as constraints.
+
+### Agreement analysis
+Not applicable: The schema and the attribute contracts were fixed by earlier values of this Request and are only consumed here.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the send form with MVR selected, and Home after saving.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: send-form.ts depends on send-draft.ts and money.ts; neither domain module imports DOM or Supabase.
+- Failure: Condition: The rate is empty, zero, negative or not a number. | Outcome: Refusal | Observation: data-usd shows $0.00 and Save entry is disabled; nothing is stored.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: In the send form, switching to MVR shows a rate field (MVR per $1) and the dollar value worked out as the owner types, for example MVR 10,000 at 20.00 shows $500.00; saving stores the MVR amount, the rate and that USD value, and the entry reads MVR 10,000 at 20.00 under its $500.00.
+
+Stimulus: The acceptance support starts the stack, builds and serves the bundle, creates an account with one saved person 'Ahmed Shifaz' and no entries. A Chromium context at 360 by 780 signs in and taps Send, taps MVR, types 10,000 in Amount sent and 20 in Rate (MVR per $1), then tries other pairs: 1 at 8, 100 at 3 and 15,400 at 15.40, and finally 10,000 at 20 again; it taps the Ahmed Shifaz chip and Save entry.
+
+Expected: After tapping MVR the MVR button is pressed and the rate field is visible; data-usd reads $500.00 for 10,000 at 20, $0.13 for 1 at 8, $33.33 for 100 at 3 and $1,000.00 for 15,400 at 15.40, and the abbaas preview box's data-amount follows the USD value. After saving, Home shows one data-entry element in the right half containing $500.00 and the text 'MVR 10,000 at 20.00', and the abbaas box reads data-amount="50000" and $500.00. Read through the service role, the entry has currency MVR, amount_minor 1000000, rate 20.0000 and usd_cents 50000. Switching back to USD in a new form hides the rate field.
+
+Falsifier: Truncating instead of rounding gives $0.12 for 1 at 8; multiplying instead of dividing gives $200,000.00; storing the USD value as amount_minor or dropping the rate fails the stored-row check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-mvr.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+## Value 5: receive a repayment from Abbaas
+
+### Purpose
+Let the owner record money Abbaas paid back from a full-screen teal form, in dollars or in rufiyaa at a rate, with quick amounts, and show where the balance lands, including when he pays more than he holds or exactly clears it.
+
+### Constraints
+- Values 1 to 4 provide the session, Home with the two boxes, the centre line, the bottom Receive button (data-action="receive"), the send form patterns, the money conversion and LedgerStore.addEntry.
+- A receive has no person: person_id and person_name stay null.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/domain/receive-draft.ts` | CREATE_NEW | Pure receive draft: currency, amount, rate, date, note; whether it can be saved; its USD value; the balance after it; and which note applies (more than held, clears it, or none). |
+| `src/ui/receive-form.ts` | CREATE_NEW | The teal full-screen receive form as a function from the draft and the current balance to DOM. |
+| `src/ui/home.ts` | EXTEND | Places receives in the left half of the centre line, fills the owner's box when the balance is negative, and shows the All square chip at zero after entries exist. |
+| `src/ui/theme.css` | EXTEND | Styles of the receive form, quick amounts and its note. |
+| `src/main.ts` | EXTEND | Navigates to the receive form with #receive and back to Home after saving. |
+
+### Paradigm
+functional
+
+### Decisions
+- Navigation: tapping data-action="receive" sets location.hash to #receive; Close and the back button return to Home; saving returns to Home and re-reads the ledger.
+- Receive form contract: root data-form="receive" with background #0f6f68 and white text; title 'Payment from Abbaas'; the same USD and MVR buttons as the send form, USD selected first; an input labelled 'Amount received'; with MVR, the same 'Rate (MVR per $1)' field and data-usd output and the same conversion.
+- Quick amounts: buttons carrying data-quick. 'All of it · $X' sets the amount to what Abbaas currently holds and is shown only while he holds money; '$500' and '$1,000' set those amounts; each switches the currency to USD.
+- Note: an element carrying data-receive-note appears when the payment is more than Abbaas holds, reading 'This is $D more than he has of yours. The balance moves to your side: you will have $D of his.' (D = payment minus what he holds, or the whole payment when nothing is held), and when it equals what he holds, reading 'This clears it. You will be all square.'; otherwise it is absent.
+- Preview boxes data-preview-box="you"/"abbaas" show the balance after this payment, as on the send form; Save entry (name starting 'Save entry') is disabled until the USD value is more than zero.
+- A saved receive stores kind 'receive', currency, amount_minor, rate (MVR only), usd_cents, entry_date, note, and no person.
+- Home: a receive's element (data-entry, no data-person) sits wholly in the left half of the centre line beside a round teal node with a left-pointing arrow and shows the amount, 'from Abbaas' and its detail. When the balance is negative the owner's box is filled with the unsigned amount and the caption 'have his money' and Abbaas's box is empty; at zero both are empty and the data-square chip reads All square.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: The files are created by earlier values of this same Request and extended in place; no behaviour is moved, and the attribute contracts of earlier values are kept as constraints.
+
+### Agreement analysis
+Not applicable: The schema and the attribute contracts were fixed by earlier values of this Request and are only consumed here.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home's Receive button, the receive form and Home after saving.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: receive-form.ts depends on receive-draft.ts and money.ts; the domain modules import neither DOM nor Supabase.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+- Failure: Condition: The amount does not parse or is zero. | Outcome: Refusal | Observation: Save entry is disabled and nothing is stored.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Tapping Receive opens the teal form; the owner enters what Abbaas paid (USD, or MVR with a rate), or taps All of it, $500 or $1,000, and sees the after-saving boxes; saving puts the entry left of the centre line and lowers what Abbaas holds. A payment larger than he holds shows a note before saving and, once saved, empties his box and fills the owner's blue box with the difference and the caption have his money; a payment equal to what he holds leaves both boxes empty and shows All square.
+
+Stimulus: The acceptance support starts the stack, builds and serves the bundle, creates an account and seeds through the service role one USD send of 74000 cents to a person 'Mariyam Nisha'. A Chromium context at 360 by 780 signs in. It taps Receive, types 300 and saves. It taps Receive again, taps the All of it quick amount and saves. It taps Receive again, taps $1,000 and saves.
+
+Expected: The first form carries data-form="receive", shows 'All of it · $740.00', no data-receive-note for 300, and the abbaas preview at data-amount="44000"; after saving, the new receive element is wholly in the left half and contains $300.00 and from Abbaas, and the abbaas box reads $440.00. The second form's All of it reads $440.00 and the note reads 'This clears it. You will be all square.'; after saving both boxes are empty and the data-square chip reads All square. The third form shows no All of it button; after $1,000 the note reads 'This is $1,000.00 more than he has of yours. The balance moves to your side: you will have $1,000.00 of his.' and the you preview box is filled with data-amount="100000"; after saving, the you box has data-state="filled", data-amount="100000", $1,000.00 and the caption have his money, and the abbaas box is empty. The account then has three receives with person_name null and usd_cents 30000, 44000 and 100000.
+
+Falsifier: Putting receives on the right, adding a receive instead of subtracting it, keeping the money in Abbaas's box when the balance turns negative, signing the amount, or attaching a person to a receive fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/receive.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+## Value 6: the full entry list with day groups, running balance and totals
+
+### Purpose
+Turn Home's list into the confirmed centre-line ledger: entries grouped by date, newest first, each showing who holds what after it, with totals that add up to the balance in the boxes.
+
+### Constraints
+- Values 3 to 5 already place sends right and receives left of the centre line with data-entry, data-person and the amount, party and detail; this value adds the grouping, the after-balance and the totals.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/domain/ledger-view.ts` | CREATE_NEW | Pure projection of the entries into day groups (entry_date descending, then saved_at descending within a day), each entry's balance after it (computed in chronological order: entry_date ascending, then saved_at ascending), and the totals sent and paid back. |
+| `src/ui/home.ts` | EXTEND | Renders the day groups, each entry's after-balance on the opposite side of the line, and the totals from ledger-view.ts. |
+| `src/ui/theme.css` | EXTEND | Styles of the day labels and the after-balance text. |
+
+### Paradigm
+functional
+
+### Decisions
+- Day groups: each date is an element carrying data-day="YYYY-MM-DD" whose label reads like 'Thu 8 Oct' (weekday, day, short month, in English) and 'Today · Sun 11 Oct' for the device's today; groups are newest date first and entries newest saved first within a date.
+- After-balance: each entry element carries data-after="<cents>" (positive when Abbaas holds money, negative when the owner does, 0 when square) and shows on the other side of the line 'Abbaas has $X', 'You have $X' or 'All square', in teal, blue or grey respectively.
+- Totals: elements carrying data-total="sent" and data-total="paid" read 'You sent $X' and 'He paid back $Y', the sums of send and receive usd_cents; their difference equals the balance in the boxes.
+- ledger-view.ts is pure and unit-tested with vitest; Home renders only what it returns.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: The files are created by earlier values of this same Request and extended in place; no behaviour is moved, and the attribute contracts of earlier values are kept as constraints.
+
+### Agreement analysis
+Not applicable: The schema and the attribute contracts were fixed by earlier values of this Request and are only consumed here.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home with recorded entries.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: home.ts depends on ledger-view.ts and balance.ts; ledger-view.ts depends on nothing.
+- Failure: Condition: Reading the ledger fails. | Outcome: Retry | Observation: Home shows the alert 'Could not load the ledger. Try again.' and no groups, totals or entries.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: After several sends and repayments, Home lists them grouped by date, newest first, on the centre line; each entry shows its USD amount, to whom or from Abbaas, its currency detail, and on the other side who holds what after it (Abbaas has $740.00, You have $260.00 or All square); the totals You sent and He paid back equal the sums of the entries, and their difference is the balance in the boxes.
+
+Stimulus: The acceptance support creates an account and seeds through the service role, with explicit saved_at times, two people and six entries: 2026-09-26 an MVR send of 770000 laari at 15.4000 (usd_cents 50000) to Mariyam Nisha; 2026-09-29 a USD receive of 50000; 2026-10-02 an MVR send of 600000 laari at 15.0000 (usd_cents 40000) to Mariyam Nisha; 2026-10-05 an MVR send of 1540000 laari at 15.4000 (usd_cents 100000) to Ahmed Shifaz; 2026-10-08 a USD send of 34000 to Mariyam Nisha saved at 09:00; and 2026-10-08 a USD receive of 100000 saved at 18:00. A Chromium context at 360 by 780 signs in.
+
+Expected: Home shows five data-day groups in the order 2026-10-08, 2026-10-05, 2026-10-02, 2026-09-29, 2026-09-26, labelled Thu 8 Oct, Mon 5 Oct, Fri 2 Oct, Tue 29 Sep and Sat 26 Sep. Within 2026-10-08 the receive comes before the send. The entries' data-after values, newest first, are 74000, 174000, 140000, 40000, 0 and 50000, and their after texts read Abbaas has $740.00, Abbaas has $1,740.00, Abbaas has $1,400.00, Abbaas has $400.00, All square and Abbaas has $500.00. data-total="sent" reads You sent $2,240.00, data-total="paid" reads He paid back $1,500.00, and the abbaas box reads data-amount="74000".
+
+Falsifier: Ordering by insertion, computing the after-balance newest first, or totals that ignore MVR entries' usd_cents fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/entry-list.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+## Value 7: Saved message with Undo
+
+### Purpose
+Right after saving, tell the owner who now holds how much and let them take the entry back with one tap.
+
+### Constraints
+- Values 3 and 5 return to Home after a save; LedgerStore has addEntry; entries.id identifies the saved row.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ports/ledger-store.ts` | EXTEND | Adds removeEntry(id) with its Retry outcome. |
+| `src/adapters/supabase/ledger-store.ts` | EXTEND | Implements removeEntry as a delete by id under row-level security. |
+| `src/ui/home.ts` | EXTEND | Renders the Saved message with its Undo button when Home is shown right after a save. |
+| `src/main.ts` | EXTEND | Remembers the id of the entry just saved, passes it to Home, removes it on Undo and re-reads the ledger. |
+| `src/ui/theme.css` | EXTEND | Styles of the Saved message. |
+
+### Paradigm
+functional
+
+### Decisions
+- The Saved message is an element with role=status and data-saved-message, shown on Home after a save until the owner taps Undo, leaves Home or reloads. Its text reads 'Saved. Abbaas now has $X of yours.', 'Saved. You now have $X of his.' or 'Saved. You are all square.' from the balance after the save, and it holds a button named Undo.
+- Undo deletes that one entry, re-reads the ledger, and removes the message; the boxes, list and totals then match the ledger without it.
+- The message sits above the bottom buttons and never covers them.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: The files are created by earlier values of this same Request and extended in place; no behaviour is moved, and the attribute contracts of earlier values are kept as constraints.
+
+### Agreement analysis
+Not applicable: The schema and the attribute contracts were fixed by earlier values of this Request and are only consumed here.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home right after a save.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: main.ts owns the just-saved id; home.ts renders it; the adapter implements the port.
+- Failure: Condition: Undo cannot reach the server. | Outcome: Retry | Observation: The message stays with 'Could not undo. Try again.' and the entry is still listed.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Right after saving, a Saved message says who now holds how much and offers Undo; tapping Undo removes that entry from the list and from the stored ledger, and the boxes return to the balance before it.
+
+Stimulus: The acceptance support creates an account with a person 'Mariyam Nisha' and seeds one USD send of 74000 cents. A Chromium context at 360 by 780 signs in, taps Send, types 500, taps Mariyam Nisha and saves; then taps Undo.
+
+Expected: After saving, an element with role=status and data-saved-message reads 'Saved. Abbaas now has $1,240.00 of yours.' and holds a button named Undo, and two data-entry elements are shown. After Undo the message is gone, one data-entry element remains, the abbaas box reads data-amount="74000" and $740.00, and the account holds one entry when read through the service role. After a reload no data-saved-message is shown.
+
+Falsifier: An Undo that only hides the entry leaves two rows in the database; a message with the balance before the save, or one that survives a reload, fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/undo.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+## Value 8: phone layout, wide-screen column and Android install
+
+### Purpose
+Make every screen fit Android phones from 360 px wide, keep the bottom buttons clear of the gesture bar, cap the app at a centred 560 px column on wider screens, and make it installable from Chrome as a full-screen app with its own name and icon.
+
+### Constraints
+- The app icons are committed by the orchestrator as binary files: public/icons/icon-192.png (192 by 192), public/icons/icon-512.png (512 by 512) and public/icons/icon-maskable-512.png (512 by 512, glyph inside the safe zone). Vite copies public/ into dist/ at the base path.
+- Values 1 to 7 provide Home, the send form and the receive form with their data attributes.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `public/manifest.webmanifest` | CREATE_NEW | The web app manifest Chrome reads to offer Add to Home screen. |
+| `public/sw.js` | CREATE_NEW | A minimal service worker with a network pass-through fetch handler, so Chrome treats the site as installable; it caches no ledger data. |
+| `index.html` | EXTEND | Links the manifest, sets the theme-color meta and an apple-touch-icon, and registers sw.js with the base path. |
+| `src/ui/theme.css` | EXTEND | Fluid layout from 360 px, a centred column with max-width 560 px, bottom buttons and the Saved message above env(safe-area-inset-bottom), dynamic viewport height units, and 44 px minimum touch targets. |
+| `src/main.ts` | EXTEND | Registers the service worker after load, relative to import.meta.env.BASE_URL. |
+
+### Paradigm
+functional
+
+### Decisions
+- Manifest: name 'Abbaas Ledger', short_name 'Ledger', display 'standalone', start_url '.' and scope '.' (relative, so it works at the GitHub Pages path), background_color '#f4f7f6', theme_color '#f4f7f6', icons: icons/icon-192.png 192x192 image/png purpose any, icons/icon-512.png 512x512 image/png purpose any, icons/icon-maskable-512.png 512x512 image/png purpose maskable.
+- index.html carries <link rel="manifest" href="manifest.webmanifest">, <meta name="theme-color" content="#f4f7f6"> and <link rel="apple-touch-icon" href="icons/icon-192.png">, with paths relative to the base.
+- Layout: the app column has width 100% up to max-width 560 px and is centred with equal side margins on the #f4f7f6 page; no element may overflow it horizontally at any width from 360 px; the bottom buttons sit inside that column.
+- Safe areas: the bottom buttons and the Saved message are offset by calc(20px + env(safe-area-inset-bottom)) from the bottom; screen heights use 100dvh.
+- Touch targets: every button, link and chip is at least 44 px tall.
+- Type and colour come from the final canvas: body background #f4f7f6 (rgb(244, 247, 246)), Manrope for the box amounts and titles, Source Sans 3 for body text.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: The files are created by earlier values of this same Request and extended in place; no behaviour is moved, and the attribute contracts of earlier values are kept as constraints.
+
+### Agreement analysis
+Not applicable: The schema and the attribute contracts were fixed by earlier values of this Request and are only consumed here.
+
+### Boundaries
+- Driving port: The built bundle as Chrome loads it: the page, its manifest, icons and service worker, at several viewport widths.
+- Driven port: None beyond the static origin; the service worker passes every request to the network.
+- Dependency direction: index.html and main.ts reference public/ assets through the base path; nothing in src/ui depends on the manifest.
+- Failure: Condition: The service worker cannot be registered (for example, an unsupported browser). | Outcome: Indeterminate | Observation: The app still works as a normal web page; registration errors are caught and not shown.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Every screen uses the light palette and fonts of the final canvas, fills the phone's width from 360 px upward with no horizontal scrolling, keeps the Send and Receive buttons clear of Android's gesture bar, and on wider screens stays a centred column no wider than 560 px; every button and chip is at least 44 px tall; the app can be added to the Android home screen from Chrome and then opens full-screen without the browser bar, with its own name and icon.
+
+Stimulus: The acceptance support starts the stack, builds and serves the bundle, creates an account and seeds one USD send of 74000 cents to 'Mariyam Nisha' and one USD receive of 10000. Chromium opens and signs in at viewports 360 by 780, 412 by 915 and 1024 by 800, and at each width checks Home, the send form and the receive form. It also fetches the manifest and the icons from the served origin.
+
+Expected: At every width and on every screen document.documentElement.scrollWidth is not greater than its clientWidth. At 360 and 412 the boxes and bottom buttons span the width minus the side margins; at 1024 the app column is at most 560 px wide and its left and right margins differ by at most 2 px, and the bottom buttons lie inside it. Every visible button, link and chip is at least 44 px tall. The served stylesheet contains env(safe-area-inset-bottom). The page has a manifest link and a theme-color meta of #f4f7f6; the manifest parses with name Abbaas Ledger, short_name Ledger, display standalone and icons of 192x192 and 512x512 including one with purpose maskable; each icon URL answers 200 as image/png with those pixel sizes; navigator.serviceWorker has a registration after load. The body's computed background is rgb(244, 247, 246) and the box amount's font-family begins with Manrope.
+
+Falsifier: A fixed 390 px layout, a stretched 1,000 px column, a missing manifest or icon, a non-standalone display, or buttons under 44 px fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/layout-and-install.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+## Value 9: motion on open, save and balance change
+
+### Purpose
+Add the confirmed motion: forms grow as a circle from the tapped button, a saved entry arrives from its own side, the balance counts to its new value, a box drains while the other fills, and none of it happens when the device asks for reduced motion.
+
+### Constraints
+- Values 2 to 8 provide the forms, Home, the boxes and the entry list with their data attributes.
+- Timings and curve are fixed by the brief: cubic-bezier(0.2, 0.8, 0.2, 1); about 160 ms number pops, 220 to 300 ms colour and chips, 360 to 520 ms entrances and the reveal, 700 to 900 ms balance count.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/motion.ts` | CREATE_NEW | Motion helpers: whether reduced motion is requested, the circle reveal from a point, the entry arrival from a side, and a count-up of a cents value over a duration with requestAnimationFrame; each marks its element with data-motion while running. |
+| `src/ui/send-form.ts` | EXTEND | Opens with the circle reveal from the Send button's centre. |
+| `src/ui/receive-form.ts` | EXTEND | Opens with the circle reveal from the Receive button's centre. |
+| `src/ui/home.ts` | EXTEND | After a save, animates the new entry from its side, counts the boxes to the new balance and drains one box while filling the other when the holder changes. |
+| `src/main.ts` | EXTEND | Passes the tapped button's centre and the balance before the save to the next screen so the motion starts from the right place and value. |
+| `src/ui/theme.css` | EXTEND | Transition and clip-path styles for the motion. |
+
+### Paradigm
+functional
+
+### Decisions
+- Observable motion contract: while a motion runs its element carries data-motion with one of the values reveal (form root), enter (the new entry), count (a box whose amount is counting) or swap (both boxes while the holder changes); the attribute is removed when the motion ends. With prefers-reduced-motion: reduce, data-motion is never set and every screen shows its end state at once.
+- Reveal: the form root starts with clip-path circle(30px at X Y), where X and Y are the tapped button's centre in viewport pixels, and grows to circle(150% at X Y) over 520 ms; then data-motion is removed and clip-path is none.
+- Enter: on returning to Home after a save the new entry starts translated 44 px toward its own side (left for a send, right for a receive) at opacity 0 and settles to no transform and opacity 1 over 520 ms, starting about 380 ms after Home appears.
+- Count: the holder's box amount counts from the balance before the save to the balance after it over 700 ms (900 ms for a swap); during the count the displayed amount is between the two values and data-amount already holds the final value.
+- Swap: when a payment moves the balance to the other side, Abbaas's box counts down to $0 and turns empty while the owner's box fills and counts up, both over 900 ms.
+- All motion uses transform, opacity and clip-path only, and finishes within 1.5 seconds of its start.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: The files are created by earlier values of this same Request and extended in place; no behaviour is moved, and the attribute contracts of earlier values are kept as constraints.
+
+### Agreement analysis
+Not applicable: The schema and the attribute contracts were fixed by earlier values of this Request and are only consumed here.
+
+### Boundaries
+- Driving port: The built bundle's DOM over time, with and without prefers-reduced-motion.
+- Driven port: None; motion is local to the page.
+- Dependency direction: home.ts and the forms depend on motion.ts; motion.ts depends only on the DOM.
+- Failure: Condition: requestAnimationFrame does not run (for example, a hidden tab). | Outcome: Indeterminate | Observation: The motion completes on the next visible frame and the end state is the same as with reduced motion.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Opening Send or Receive grows the form as a circle from the tapped button's corner; returning after a save brings the new entry in from its own side and counts the balance to its new value, and a repayment larger than Abbaas held drains his box while the owner's fills; with the device set to reduce motion, each screen shows its end state at once.
+
+Stimulus: The acceptance support creates an account with a person 'Mariyam Nisha' and one seeded USD send of 74000 cents. In a Chromium context at 360 by 780 without reduced motion it signs in, taps Send and samples the form root at once and after 1.5 s; types 500, picks Mariyam Nisha, saves, and samples Home at once and after 1.5 s; then taps Receive, samples, types 2000 and saves, and samples again. A second context with reducedMotion 'reduce' repeats the same steps.
+
+Expected: Without reduced motion: right after tapping Send the form root carries data-motion="reveal" and a clip-path circle whose centre lies in the left half of the viewport, and after 1.5 s it has no data-motion; right after tapping Receive the centre lies in the right half. Right after the send is saved the new entry carries data-motion="enter" and the abbaas box carries data-motion="count" with data-amount="124000" while its text is not yet $1,240.00, and after 1.5 s neither attribute is present and the text reads $1,240.00. Right after the $2,000 receive is saved the boxes carry data-motion="swap", and after 1.5 s the you box is filled with $760.00 and the abbaas box is empty. With reduced motion no element ever carries data-motion, the form shows no clip-path right after opening, and right after each save the boxes already show $1,240.00 and then $760.00.
+
+Falsifier: Motion that ignores prefers-reduced-motion, a reveal centred on the wrong side, a count that jumps straight to the final text, or motion that has not finished after 1.5 s fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/motion.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
