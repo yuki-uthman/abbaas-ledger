@@ -14,7 +14,7 @@ Stand up the walking skeleton of the Abbaas Ledger: a static bundle built with V
 ### Targets
 | Path | Decision | Reason |
 |---|---|---|
-| `package.json` | CREATE_NEW | Declares the toolchain (vite, typescript, @supabase/supabase-js, supabase CLI, @playwright/test, vitest) and the scripts dev, build, test:unit and test:acceptance the verification argv run. |
+| `package.json` | CREATE_NEW | Declares the toolchain (vite, typescript, @supabase/supabase-js, supabase CLI, @playwright/test, vitest) and the scripts dev, build, test:unit and test:acceptance the verification argv run. test:acceptance is exactly 'playwright test --config tests/playwright.config.ts'. |
 | `tsconfig.json` | CREATE_NEW | Strict TypeScript for src/ and tests/ so npm run build typechecks before bundling. |
 | `vite.config.ts` | CREATE_NEW | Builds the static bundle into dist/ with base taken from PAGES_BASE (default '/'), so the same build serves locally and from the GitHub Pages project path. |
 | `index.html` | CREATE_NEW | The single page that loads src/main.ts and holds the app root; the viewport meta allows width=device-width. |
@@ -44,7 +44,7 @@ functional
 - An empty ledger and a failed read never look alike: a LedgerStore Retry renders a notice with role=alert and the text 'Could not load the ledger. Try again.' and no entry elements.
 - Failures are named on the ports: wrong email or password is a Refusal that keeps the sign-in screen with 'Email or password is wrong.' and clears the password; an unreachable auth endpoint is a Retry showing 'Cannot reach the server. Try again.'; a persisted session whose refresh is rejected is a Refusal that shows the sign-in screen with 'Please sign in again.', never an empty Home.
 - Dependency direction is inward: src/ports/ knows nothing of Supabase; only src/adapters/supabase/ and src/main.ts import @supabase/supabase-js; src/ui/ imports ports and plain values only.
-- Toolchain: Vite with TypeScript and no UI framework, Supabase CLI as a devDependency so node_modules/.bin provides supabase to the acceptance support, vitest for unit tests, Playwright with chromium for acceptance at a 360 by 780 viewport. npm run build runs tsc --noEmit then vite build.
+- Toolchain: Vite with TypeScript and no UI framework, Supabase CLI as a devDependency so node_modules/.bin provides supabase to the acceptance support, vitest for unit tests, Playwright with chromium for acceptance at a 360 by 780 viewport. npm run build runs tsc --noEmit then vite build. The Playwright configuration lives at tests/playwright.config.ts and npm run test:acceptance runs playwright test --config tests/playwright.config.ts, so every acceptance byte stays under tests/.
 - Test seeding is the acceptance support's job, not the app's: tests/support/accounts.ts creates confirmed accounts and inserts fixed rows with the service-role key against the local stack, setting user_id explicitly; the app itself gains its write surface in value 3.
 
 ### Reuse analysis
@@ -70,7 +70,7 @@ Not applicable: This value introduces the first producer and consumer of the sch
 ### Acceptance supports
 - `tests/support/local-stack.ts`
 - `tests/support/accounts.ts`
-- `playwright.config.ts`
+- `tests/playwright.config.ts`
 
 ### Public oracle
 Observation: On the first visit on a phone the owner signs in once with email and password; every later visit, including opening the app from the home-screen icon, goes straight to Home with no sign-in screen; the ledger belongs to that account, and a second account sees none of its entries or people.
