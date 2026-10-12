@@ -624,3 +624,478 @@ Verification command: `npm ci`
 Verification command: `npx playwright install chromium`
 Verification command: `npm run build`
 Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+## Refined board value 1: Home as on the refined board
+
+### Purpose
+Give Home the refined board's look: no title, the two boxes at the top, an Entries heading with the count, tinted entry cards with sends left of the centre line and payments right of it, and a fade above the bottom buttons.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites the oracle of version one's entry list (tests/acceptance/entry-list.spec.ts), whose sends sat right of the line; the new oracle replaces it at the same path.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | Drops the title, reshapes the boxes, adds the Entries heading and count, the tinted cards on the reversed sides and the fade. |
+| `src/domain/ledger-view.ts` | EXTEND | Adds the count label ('No entries', '1 entry', 'N entries') and each entry's side (send left, receive right) as pure data. |
+| `src/ui/theme.css` | EXTEND | Box, pill, heading, card, day-label and fade styles of the board's Main artboard. |
+
+### Paradigm
+functional
+
+### Decisions
+- Home has no title or heading above the boxes; the box row starts 24 px below the top of the screen (plus the safe-area inset) with 16 px side margins and a 10 px gap between the boxes.
+- Each box is at least 136 px tall with 20 px radius and 14 px padding; its name pill ('You' / 'Abbaas', 28 px tall) sits in the box's outer top corner (top-left in the You box, top-right in the Abbaas box), and the amount and caption sit at the bottom aligned to that same outer edge. A filled amount is Manrope 800 34 px with its cents ('.00') in a span carrying data-cents at half that size; an empty box reads $0 at 24 px. The box element's text still reads e.g. '$490.00' end to end.
+- Filled You box: background #e7eef7, ink #1b3f6e, pill #0d1f1c on #f4f7f6, caption 'have his money'. Filled Abbaas box: background #e0f0ed, ink #0b5750, pill #c9e4df on #0b5750, caption 'has your money'. Empty boxes: transparent with a 1.5 px dashed outline (rgba(36,80,138,0.35) / rgba(15,111,104,0.38)), ink #7c8c88, captions 'nothing of his' / 'nothing of yours'.
+- The All square chip (data-square) reads 'All square · nobody owes anything', centred under the boxes.
+- Totals line: 'You sent $X' at the left and 'He paid back $Y' at the right of one row, 13 px, #4c5f5b with the amounts in #0d1f1c; data-total keeps its values.
+- Under the totals an h2 'Entries' (Manrope 800 17 px) sits at the left and the count label at the right of one row; the count element carries data-count and reads 'No entries', '1 entry' or 'N entries'.
+- Day labels (data-day) are small pills centred on the line: Manrope 700 11 px, letter-spacing 0.08em, uppercase, #4c5f5b on #f4f7f6 with a 1 px #cfd9d6 border; today's reads 'Today · Mon 12 Oct'.
+- Each entry row is a three-part row across the full width: the card, a 36 px column holding the 26 px round node on the centre line, and the after-balance text (data-after). A send's card is on the left of the line and its data-after on the right; a payment's card is on the right of the line and its data-after on the left. data-entry is on the card and each card lies wholly on its own half of the list.
+- A card is a 14 px-radius box with 9 px by 12 px padding: send cards rgba(36,80,138,0.10), payment cards rgba(15,111,104,0.11); first line the USD amount in Manrope 800 17 px in the entry's colour (#24508a send, #0f6f68 payment); second line 'to <name>' (data-person) or 'from Abbaas' in 13 px 700; third line its detail ('Paid in USD' or 'MVR 10,000 at 20.00') in 12 px #4c5f5b. Send text aligns left, payment text aligns right. The node is the entry's colour with a white arrow, pointing right for a send and left for a payment.
+- data-after reads 'Abbaas has $X', 'You have $X' or 'All square' in 12 px 600, #0b5750 / #1b3f6e / #4c5f5b.
+- A fixed fade (data-fade, aria-hidden, pointer-events none) 150 px tall at the bottom of the screen runs from transparent to #f4f7f6 at 55 %, under the Send and Receive buttons, so entries scrolled behind the buttons are covered; the list ends with bottom padding so its last entry can scroll clear of the buttons.
+- Width: these sizes hold from 360 px to the 560 px column; no horizontal scroll.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM after sign-in: Home.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails. | Outcome: Retry | Observation: Home shows the alert 'Could not load the ledger. Try again.' and neither box claims a balance.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: After several sends and repayments Home has no title, shows the boxes at the top with the pill in the outer corner, an Entries heading with the count, tinted entry cards with sends left of the centre line and payments right of it, the after-balance on the other side, and a fade above the bottom buttons.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account is seeded through the service role with people Mariyam Nisha and Ahmed Shifaz and entries over three days: a USD send of $250.00 to Mariyam Nisha, an MVR send of MVR 10,000 at 20 ($500.00) to Ahmed Shifaz, a $300.00 USD payment, and today a $340.00 USD send to Ahmed Shifaz.
+
+Expected: There is no heading element above the boxes and no visible text 'Abbaas Ledger' on Home; the top of the you box is within 24 to 64 px of the top of the viewport. The abbaas box is filled with data-amount 79000 and text '$790.00', its pill 'Abbaas' lies in its top-right quarter, and its amount's right edge is within 20 px of the box's right edge; the you box is empty with its pill in its top-left quarter. An h2 'Entries' is visible and data-count reads '4 entries'. There are four data-entry cards; the two send cards with data-person Mariyam Nisha and Ahmed Shifaz on the earlier days and today's send each lie wholly in the left half of the list and the $300.00 payment card wholly in the right half; each card's background is the tinted colour of its kind; each row's data-after lies on the opposite half from its card and today's reads 'Abbaas has $790.00'. Day labels read in uppercase and today's contains 'TODAY'. Totals read You sent $1,090.00 and He paid back $300.00. An element with data-fade is present, at least 120 px tall, anchored to the bottom of the viewport, with pointer-events none.
+
+Falsifier: Sends on the right, a title above the boxes, a missing Entries heading or count, centred amounts, or no fade fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/entry-list.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+## Refined board value 2: Send form as on the refined board, in USD
+
+### Purpose
+Rebuild the blue send form to the refined board and drop the note field and the after-saving preview; a USD send lands on Home left of the centre line.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites version one's send oracle (tests/acceptance/send-usd.spec.ts), whose save button was 'Save entry' and whose form had a note and a preview; the new oracle replaces it at the same path.
+- Stored entries keep note null; the column stays in the schema.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/send-form.ts` | EXTEND | The board's SendMvr/SendUsd layout: top row, eyebrow and title, sliding currency switch, large amount, USD note, tick chips, dashed New person chip, date chip and white Send · $X button; no note and no preview. |
+| `src/domain/send-draft.ts` | EXTEND | Drops the note and the preview balance; the draft becomes amount, currency, rate, person and date. |
+| `src/ui/theme.css` | EXTEND | Styles of the reworked send form. |
+
+### Paradigm
+functional
+
+### Decisions
+- Form root data-form='send', background #24508a, white text, padding 16 px 20 px 20 px, a full-height column whose save button sits at the bottom (margin-top auto) above the safe-area inset.
+- Top row: a 44 by 44 px Close button (aria-label 'Close', 14 px radius, rgba(255,255,255,0.14), white × icon) at the left and, at the right, the line 'Abbaas has $X of yours' / 'You have $X of his' / 'All square' in 13.5 px with the amount in bold white.
+- Under it the eyebrow 'New entry · Send' (Manrope 800 12 px, uppercase, letter-spacing 0.1em, rgba(255,255,255,0.85)) above the h1 'Money sent for Abbaas' (Manrope 800 27 px).
+- Currency switch: a group labelled 'Currency' (rgba(255,255,255,0.12), 16 px radius, 4 px padding) holding two 44 px buttons USD and MVR with aria-pressed, and a white pill element (data-pill, aria-hidden) under the pressed one that slides between halves in 300 ms; the pressed label is #1b3f6e, the other white. USD is pressed on open.
+- Amount: label 'Amount sent' (13.5 px 600) over a row with the prefix (data-prefix: '$' at 32 px in USD, 'MVR' at 20 px in MVR, Manrope 800, rgba(255,255,255,0.85)) and the input (inputmode decimal, Manrope 800 44 px, letter-spacing -0.03em, white, no box) on a 2 px rgba(255,255,255,0.55) underline.
+- In USD, under the amount, the line 'Dollars go straight onto the balance. No rate needed.' with an info icon, 13.5 px.
+- Paid to: label 'Paid to' then wrapping chips 44 px tall, 999 px radius: one per saved person (data-person-chip, aria-pressed, ordered by name); the chosen one is white with #1b3f6e text and a tick icon that slides in before the name; the others rgba(255,255,255,0.14) with white text. A 'New person' chip with a 1.5 px dashed rgba(255,255,255,0.6) outline and a plus icon reveals the Name input and Add button of version one.
+- Date: a chip 48 px tall, 14 px radius, rgba(255,255,255,0.12), white calendar icon and text 'Today, 12 Oct' (or 'Sat, 10 Oct' for another date, en-GB short weekday, day, short month). An input type=date labelled 'Date' lies over the whole chip, transparent, so tapping the chip opens the device's date picker; its value starts as today and the chip text follows it.
+- Save: a white button 60 px tall, 20 px radius, #1b3f6e text, Manrope 800 17 px, an up-right arrow and the accessible name 'Send · $250.00' (the USD value as typed or worked out; 'Send · $0.00' while empty); disabled until the amount is above zero and a person is chosen.
+- There is no input labelled 'Note', no data-preview-box and no 'After saving' text anywhere on the form.
+- A saved USD send stores kind send, currency USD, amount_minor = usd_cents, rate null, note null, entry_date from the Date input, person_id and person_name as chosen; Home then shows it left of the centre line.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home's Send button, the send form and Home after saving.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+- Failure: Condition: The amount is empty, zero or not a number, the rate is missing in MVR, or no person is chosen on a send. | Outcome: Refusal | Observation: The white save button is disabled and nothing is stored.
+- Failure: Condition: Adding a new person fails. | Outcome: Retry | Observation: The name input keeps the typed name and shows 'Could not add this person. Try again.'
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Tapping Send opens the blue form as on the refined board, with no note field and no after-saving preview; a USD send saved with 'Send · $250.00' appears on Home left of the centre line.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has one saved person 'Mariyam Nisha' and no entries. It taps Send, keeps USD, types 250.00, taps the Mariyam Nisha chip and taps 'Send · $250.00'. Then it taps Send again, taps New person, types 'Ahmed Shifaz', taps Add, types 100, sets the Date input to yesterday and taps 'Send · $100.00'.
+
+Expected: The form (data-form send) has a Close button, the text 'New entry · Send' and the heading 'Money sent for Abbaas'; USD is pressed and the data-pill element lies over the USD button; data-prefix reads '$'; the line 'Dollars go straight onto the balance. No rate needed.' is visible; there is no element labelled Note, no data-preview-box and no text 'After saving'. The Date input's value is today and the visible chip text starts with 'Today, '. The input labelled 'Amount sent' has a computed font-size of 44px. Before a person is chosen the button named 'Send · $250.00' is disabled; after tapping Mariyam Nisha that chip has aria-pressed true and a visible tick icon and the button is enabled. After saving, Home shows one data-entry card wholly in the left half with $250.00 and Mariyam Nisha, and the abbaas box reads data-amount 25000. After the second save the date chip had read yesterday's weekday before saving; Home shows two cards, both in the left half, and the abbaas box reads 35000. Read through the service role, both entries are kind send, currency USD, rate null, note null, amount_minor equal to usd_cents (25000 and 10000), the first dated today and the second yesterday, with person_name Mariyam Nisha and Ahmed Shifaz.
+
+Falsifier: A note field, a preview, a 'Save entry' button, a send placed right of the line, or a date chip that does not follow the date input fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-usd.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+## Refined board value 3: Send in MVR on the refined board
+
+### Purpose
+In the reworked send form, MVR slides the pill and opens the rate card beside the white In dollars card; the save button and the stored entry carry the worked-out dollars.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites version one's MVR oracle (tests/acceptance/send-mvr.spec.ts) at the same path.
+- Value 2 of this Request supplies the reworked form; this value adds the MVR state.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/send-form.ts` | EXTEND | The MVR state: pill on MVR, prefix MVR, the rate card and the In dollars card, the USD note hidden. |
+| `src/ui/theme.css` | EXTEND | Rate and In dollars card styles and the open/close of the rate row. |
+
+### Paradigm
+functional
+
+### Decisions
+- Tapping MVR sets its aria-pressed, slides data-pill under it, changes data-prefix to 'MVR' at 20 px and hides the USD note.
+- Under the amount a row of two equal cards opens (max-height and opacity, 380 ms): left a card with a 1.5 px rgba(255,255,255,0.4) border on rgba(255,255,255,0.12), 16 px radius, holding the label 'Rate · MVR per $1' (13 px 600) and its input (inputmode decimal, Manrope 800 24 px, white); right a white card holding 'In dollars' (13 px 600, #3d5f8a) and an output carrying data-usd (Manrope 800 24 px, #1b3f6e) that shows the amount divided by the rate, rounded half up to the cent, as $1,234.56.
+- The USD value pops (scale 1.06, 160 ms) when it changes; with reduced motion it does not.
+- The save button's name follows the worked-out value: 'Send · $500.00' for MVR 10,000 at 20.
+- Switching back to USD closes the rate row, shows the USD note and the button follows the typed dollars.
+- A saved MVR send stores currency MVR, amount_minor in laari, the rate as typed, usd_cents as worked out, note null; its card on Home reads $500.00 with the detail 'MVR 10,000 at 20.00'.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the send form in MVR and Home after saving.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+- Failure: Condition: The amount is empty, zero or not a number, the rate is missing in MVR, or no person is chosen on a send. | Outcome: Refusal | Observation: The white save button is disabled and nothing is stored.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Switching to MVR slides the pill and opens the rate card beside the white In dollars card; MVR 10,000 at 20.00 shows $500.00 and Send · $500.00; saving stores the MVR amount, rate and USD value and the card reads MVR 10,000 at 20.00 under $500.00.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has one saved person 'Ahmed Shifaz' and no entries. It taps Send, taps MVR, types 10,000 in Amount sent and 20 in the input labelled 'Rate · MVR per $1', taps Ahmed Shifaz and taps 'Send · $500.00'.
+
+Expected: After tapping MVR, MVR has aria-pressed true, data-pill lies over the MVR button, data-prefix reads 'MVR', the USD note is not visible, and an input labelled 'Rate · MVR per $1' and the text 'In dollars' are visible side by side (same row, the In dollars card to the right with a white background). After typing, data-usd reads $500.00 and a button named 'Send · $500.00' is enabled. After saving, Home shows one data-entry card in the left half containing $500.00 and 'MVR 10,000 at 20.00', and the abbaas box reads data-amount 50000. Read through the service role the entry is currency MVR, amount_minor 1000000, rate 20, usd_cents 50000, note null, person_name Ahmed Shifaz.
+
+Falsifier: A rate field under a different label, a missing In dollars card, a wrong dollar value or button name, or a send placed right of the line fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-mvr.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+## Refined board value 4: Receive form as on the refined board
+
+### Purpose
+Rebuild the teal receive form to the refined board, without quick amounts, note field, after-saving preview or over-payment note; a payment lands right of the centre line and an over-payment moves the balance to the owner's box.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites version one's receive oracle (tests/acceptance/receive.spec.ts) at the same path.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/receive-form.ts` | EXTEND | The board's Receive layout: top row, eyebrow and title, sliding currency switch, large amount, rate cards in MVR, date chip and white Receive · $X button; no quick amounts, note, preview or over-payment note. |
+| `src/domain/receive-draft.ts` | EXTEND | Drops the quick amounts, the note and the preview; the draft becomes amount, currency, rate and date. |
+| `src/ui/theme.css` | EXTEND | Styles of the reworked receive form. |
+
+### Paradigm
+functional
+
+### Decisions
+- Form root data-form='receive', background #0f6f68, white text, the same frame as the send form: Close button and the 'Abbaas has $X of yours' line on top, eyebrow 'New entry · Receive', h1 'Payment from Abbaas', the Currency group with data-pill (pressed label #0b5750), label 'Amount received' with data-prefix and the 44 px input.
+- In MVR the same rate row as the send form: 'Rate · MVR per $1' card and the white 'In dollars' card (label #235f59, output data-usd #0b5750).
+- Date chip and transparent input type=date labelled 'Date' exactly as on the send form.
+- Save: white 60 px button, #0b5750 text, a down-left arrow, accessible name 'Receive · $300.00' following the USD value; disabled until the amount is above zero (and a rate is given in MVR).
+- There is no data-quick element, no 'All of it' text, no input labelled 'Note', no data-preview-box, no 'After saving' text and no data-receive-note.
+- A saved payment stores kind receive, the currency, amount, rate and usd_cents, note null, person null; its card on Home lies right of the centre line. A payment larger than Abbaas holds empties his box and fills the You box with the difference and 'have his money'; a payment equal to what he holds leaves both boxes empty with the All square chip.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home's Receive button, the receive form and Home after saving.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+- Failure: Condition: The amount is empty, zero or not a number, or the rate is missing in MVR. | Outcome: Refusal | Observation: The white Receive button is disabled and nothing is stored.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Tapping Receive opens the teal form as on the refined board without quick amounts, note, preview or over-payment note; a payment lands right of the centre line, an over-payment fills the owner's box with the difference, and an exact payment shows All square.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account is seeded with person Mariyam Nisha and one USD send of $740.00 to her. It taps Receive, types 300 and taps 'Receive · $300.00'; taps Receive, types 440 and taps 'Receive · $440.00'; then taps Receive, types 200 and taps 'Receive · $200.00'.
+
+Expected: The form (data-form receive) shows 'New entry · Receive', the heading 'Payment from Abbaas', the line 'Abbaas has $740.00 of yours', USD pressed with data-pill over it, the input labelled 'Amount received' with a computed font-size of 44px, and the Date input set to today with a visible chip starting 'Today, '; there is no data-quick element, no text 'All of it', no element labelled Note, no data-preview-box, no 'After saving' text and no data-receive-note, both before typing and with an amount larger than he holds typed. After the first save the payment card lies wholly in the right half of the list and the abbaas box reads data-amount 44000. After the second save both boxes are empty and the All square chip is shown. After the third save the you box is filled with data-amount 20000, the text '$200.00' and 'have his money', and the abbaas box is empty. Read through the service role there are three receive entries, all currency USD, rate null, note null, person_name null, with usd_cents 30000, 44000 and 20000.
+
+Falsifier: Quick amounts, a note, a preview or an over-payment note on the form, a payment placed left of the line, or a wrong balance after an over-payment fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/receive.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+## Refined board value 5: Saved message and Undo on the refined board
+
+### Purpose
+Show the board's dark Saved message above the bottom buttons after a save, with Undo restoring the ledger.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites version one's Undo oracle (tests/acceptance/undo.spec.ts) at the same path; it saves through the reworked forms of values 2 to 4.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | The Saved message as on the board. |
+| `src/ui/theme.css` | EXTEND | Saved message styles. |
+
+### Paradigm
+functional
+
+### Decisions
+- The Saved message (data-saved-message, role status) is a dark bar: background #0d1f1c, white text, 16 px radius, 4 px 6 px 4 px 12 px padding, shadow, 16 px from each side, its bottom edge above the top of the Send and Receive buttons (bottom 96 px plus the safe-area inset).
+- It starts with a 26 px round #29b3a6 tick badge, then the text 'Saved. Abbaas now has $X of yours.', 'Saved. You now have $X of his.' or 'Saved. All square.' in 14 px 600, then an Undo button (44 px tall, no background, #7fe0d4, 14 px 700).
+- Undo removes the saved entry from the store, the list and the boxes, which return to the balance before it, and the message goes; a failed removal keeps everything and shows 'Could not undo. Try again.' (data-undo-error).
+- The message is shown only on the Home reached by that save; a reload or opening a form ends it.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the send form, Home after saving and its Saved message.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Removing the entry fails. | Outcome: Retry | Observation: The entry, the boxes and the message stay, and 'Could not undo. Try again.' is shown.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Right after a save a dark Saved message with a tick says who now holds how much and offers Undo above the bottom buttons; Undo removes the entry and the boxes return to the balance before it.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has one saved person Mariyam Nisha and one USD send of $400.00 to her. It taps Send, types 100, taps Mariyam Nisha and taps 'Send · $100.00'; it then taps Undo.
+
+Expected: After the save a data-saved-message element with role status is visible, its computed background is rgb(13, 31, 28), it contains a tick badge and the text 'Saved. Abbaas now has $500.00 of yours.', and its bottom edge is above the top edge of the data-action send and receive buttons; the abbaas box reads data-amount 50000 and there are two data-entry cards. After tapping Undo (a button at least 44 px tall) the message is gone, there is one data-entry card, the abbaas box reads data-amount 40000, and the service role reads one entry.
+
+Falsifier: A message that overlaps the buttons, wrong words, or an Undo that leaves the entry stored fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/undo.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+## Refined board value 6: Save motion: Home grows from the form's button
+
+### Purpose
+Make saving play the board's SaveSend/SaveReceive motion: the white button is pressed, Home grows as a circle from its centre over the dimmed form, then only the new entry arrives from its own side, the balance counts and the Saved message rises.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites version one's motion oracle (tests/acceptance/motion.spec.ts) at the same path, which had entries arriving from the other side and Home replacing the form at once.
+- Motion curve cubic-bezier(0.2, 0.8, 0.2, 1); with prefers-reduced-motion nothing animates and data-motion is never set.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/motion.ts` | EXTEND | Adds the grow of Home from a point over a dimmed layer, and turns the new entry's arrival to come from its own side. |
+| `src/main.ts` | EXTEND | After a successful save keeps the form mounted under a dim layer, mounts Home above it growing from the save button's centre, and removes the form when Home fills the screen. |
+| `src/ui/home.ts` | EXTEND | Marks the new entry with a ring in its colour and delays the Saved message until the entry and the count have landed. |
+| `src/ui/send-form.ts` | EXTEND | Passes the save button's centre with a successful save and shows its pressed state. |
+| `src/ui/receive-form.ts` | EXTEND | The same for the receive form. |
+| `src/ui/theme.css` | EXTEND | Pressed state, dim layer and ring styles. |
+
+### Paradigm
+functional
+
+### Decisions
+- On a successful save the save button shows a pressed state (a 16 % dark overlay, 120 ms) and the form stays mounted under a dim layer (rgba(13,31,28,0.3), fading in over 320 ms).
+- Home is mounted above them with data-motion='grow' and clip-path circle(R at X Y) where X Y is the centre of the save button in Home's box; R steps from 0 to past the screen's far corner over 520 ms; at the end the clip-path is removed, data-motion is dropped and the form and dim layer leave the DOM. The back button state is as in version one (the form's hash is gone).
+- Once Home fills the screen, only the new entry animates: it carries data-motion='enter' and starts translated 44 px toward its own side and scaled 0.94 (a send from the left, translateX(-44px); a payment from the right, translateX(44px)), arriving over 520 ms; its card has a 2 px ring in its colour (#24508a send, #0f6f68 payment) that stays until the next screen. A new day group opens its space (max-height) so older entries move down rather than jump.
+- The holder's box counts from the balance before the save to the one after (data-motion='count', 700 ms); when the holder changes both boxes carry data-motion='swap' for 900 ms while his box drains and the owner's fills.
+- The Saved message appears only after the entry has landed and the count has finished (its opacity rises from 0 with a 18 px rise over 280 to 420 ms).
+- With prefers-reduced-motion: reduce, saving shows Home in its end state at once, with no data-motion at any time, no clip-path and the Saved message visible immediately.
+- Opening a form keeps version one's circle reveal from the tapped button.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM during and after a save.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Tapping the white button on a form presses it, then Home grows as a circle from that button's centre over the dimmed form; only the new entry moves, arriving from its own side with a ring, the balance counts, an over-payment drains his box while the owner's fills, and the Saved message rises last; with reduce motion Home shows its end state at once.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has person Mariyam Nisha and one USD send of $400.00. Test A (normal motion): it opens Send, types 100, taps Mariyam Nisha and taps 'Send · $100.00', sampling the DOM every animation frame. Test B, on a fresh account seeded the same way: it opens Receive, types 600 and taps 'Receive · $600.00', sampling likewise. Test C uses a context with reducedMotion 'reduce' on a fresh account and repeats test A.
+
+Expected: Test A: right after the tap Home's root carries data-motion 'grow' while the send form is still in the DOM, and its computed clip-path is a circle whose centre is within 4 px of the centre the save button had; within 900 ms of the tap the form is gone and Home's root has no clip-path and no data-motion. The new entry (the $100.00 card) carries data-motion 'enter' with a transform whose x translation is negative at its first sample, and the abbaas box carries data-motion 'count'; the card has a 2 px border in rgb(36, 80, 138). The data-saved-message element is not visible (or has opacity 0) while either data-motion is present, and is visible within 2.5 s of the tap. Test B: the new payment card's first sampled x translation is positive, both boxes carry data-motion 'swap', and at the end the you box reads data-amount 20000. Test C: no element ever carries data-motion, Home's root never has a clip-path, and the Saved message and the abbaas box data-amount 50000 are visible on the first frame Home is shown.
+
+Falsifier: Home replacing the form without a grow from the button, an entry arriving from the wrong side, a Saved message shown before the entry lands, or any motion under reduce fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/motion.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+## Refined board value 7: Entrances: Home on open and the form's rows
+
+### Purpose
+Play the board's entrances: on opening the app the boxes rise, the balance counts up from $0, the centre line draws down and the entries slide in from their own sides; on opening a form a ripple shows on the tapped button and the form's rows rise in after the colour fills the screen.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- The oracle is a new file tests/acceptance/entrances.spec.ts.
+- Only transform, opacity, clip-path and scaleY are animated; reduced motion shows end states at once.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/motion.ts` | EXTEND | Adds Home's first-open entrance, the button ripple and the staggered rise of a form's rows. |
+| `src/ui/home.ts` | EXTEND | Marks the boxes, the centre line and the entries for the entrance on a fresh open (not on the Home reached by a save). |
+| `src/ui/send-form.ts` | EXTEND | Marks its rows for the staggered rise. |
+| `src/ui/receive-form.ts` | EXTEND | Marks its rows for the staggered rise. |
+| `src/main.ts` | EXTEND | Plays Home's entrance only on the first Home after load or sign-in and after closing a form without saving; plays the ripple on the tapped button. |
+| `src/ui/theme.css` | EXTEND | Ripple and entrance styles. |
+
+### Paradigm
+functional
+
+### Decisions
+- Home's first-open entrance (data-motion='home-enter' on Home's root while it runs, at most 1.6 s): the boxes rise from translateY(12px) scale(0.97) and fade in (320/460 ms, the Abbaas box 70 ms after the You box); the holder's amount counts up from $0 to the balance over 700 ms starting at 250 ms; the centre line (data-spine) scales from 0 to 1 in Y from its top over 640 ms after 200 ms; each entry slides in from its own side (a send from translateX(-28px), a payment from translateX(28px)) and fades in, 70 ms apart starting at 260 ms; the totals and Entries heading fade in; the bottom buttons rise 24 px and fade in after 180 ms.
+- Opening a form: a white ripple (120 px circle, rgba(255,255,255,0.55)) scales from 0.2 to 1.4 and fades over 360 ms at the tapped button's centre (data-ripple, aria-hidden), the circle reveal of version one runs, and the form's rows (each carrying data-row) rise from translateY(16px) and fade in, 45 ms apart starting 240 ms after the reveal starts.
+- The Home reached by a save plays only value 6's motion, not this entrance.
+- With prefers-reduced-motion: reduce none of this runs: no data-motion, no data-ripple, every element in its end state from the first frame.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM on opening the app and a form.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails. | Outcome: Retry | Observation: Home shows the alert 'Could not load the ledger. Try again.' and neither box claims a balance.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Opening the app plays Home's entrance: boxes rise, the balance counts up from $0, the centre line draws down and entries slide in from their own sides; opening a form shows a ripple on the button and its rows rise in one after another; with reduce motion everything shows at once.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account is seeded with person Mariyam Nisha, a $500.00 USD send to her yesterday and a $200.00 USD payment today. Test A loads the app after sign-in by reloading Home and samples every animation frame; then it taps Send and samples. Test B repeats both with reducedMotion 'reduce'.
+
+Expected: Test A: on the reload Home's root carries data-motion 'home-enter'; the abbaas box's displayed amount is below $300.00 at an early sample and reads $300.00 at the end; the data-spine element's transform starts with a Y scale below 1 and ends at none or scale 1; the send card's first sampled x translation is negative and the payment card's positive; within 1.6 s no data-motion remains. After tapping Send a data-ripple element appears near the Send button's centre, at least four data-row elements in the form have opacity below 1 at an early sample and reach opacity 1 in top-to-bottom order of their start, and within 1.2 s none remains below 1. Test B: no element ever carries data-motion or data-ripple; the abbaas box reads $300.00 and every data-row has opacity 1 on the first sampled frame.
+
+Falsifier: No entrance on open, entries arriving from the wrong side, rows appearing all at once, or any motion under reduce fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/entrances.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
