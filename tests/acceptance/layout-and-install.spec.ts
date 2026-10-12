@@ -9,22 +9,29 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, seedHistory, type Account } from '../support/accounts.js'
 
-// Value 8: phone layout, the wide-screen column and Android install.
+// Refined board value 8: layout and install hold AFTER the entrances.
 //
 // Judged only through the declared public port: the built bundle as Chrome loads it
-// over the served origin -- the document and its computed layout at several
-// viewport widths, the stable data attributes earlier values fixed (data-box,
-// data-action, data-entry, data-form, data-person-chip, data-quick), the same-origin
-// stylesheet as it is served, the manifest and the icon bytes, and the service
-// worker registration. Nothing here reaches into src/.
+// over the served origin -- the document and its computed layout at several viewport
+// widths, the stable data attributes the board fixes (data-box, data-action,
+// data-form, data-person-chip, data-pill, data-motion), the same-origin stylesheet
+// as it is served, the manifest and the icon bytes, and the service worker
+// registration. Nothing here reaches into src/.
+//
+// The one change from version one's oracle: every measurement is taken at REST.
+// Value 7's entrances move cards 28 px and form rows 16 px while data-motion is
+// present, and the currency pill slides between the halves of the switch, so a
+// screen is measured only once no element carries data-motion, the pressed currency
+// pill has arrived over its own half, and the layout has stopped changing.
 
 const PASSWORD_FIELD = 'input[type="password"]'
 
-// The widths the design names: two Android phones and a wide screen.
+// The widths the design names: three Android phones and a wide screen.
 const WIDTHS = [
   { width: 360, height: 780 },
+  { width: 390, height: 844 },
   { width: 412, height: 915 },
-  { width: 1024, height: 800 },
+  { width: 800, height: 900 },
 ] as const
 
 const COLUMN_MAX = 560
@@ -34,7 +41,10 @@ const EPSILON = 0.5
 // The design fixes 16 px side margins on the phone; allow a little room without
 // letting a fixed, narrower-than-the-phone layout through.
 const PHONE_SIDE_MARGIN_MAX = 32
-const PAGE_BACKGROUND = 'rgb(244, 247, 246)'
+// The bottom buttons sit calc(20px + env(safe-area-inset-bottom)) from the bottom;
+// headless Chromium reports the inset as 0, so 16 px is the floor that still fails a
+// button pinned flat to the edge, where Android's gesture bar would cover it.
+const BOTTOM_CLEARANCE_MIN = 16
 const THEME_COLOR = '#f4f7f6'
 
 const LAYOUT_ACCOUNT = {
@@ -42,12 +52,9 @@ const LAYOUT_ACCOUNT = {
   password: 'layout-password-8',
 } as const
 
-// A balance Abbaas holds, so Home shows a filled box with a real amount to measure
-// the box-amount font on: $740.00 sent minus $100.00 paid back is $640.00.
-const SEEDED_PERSON = 'Mariyam Nisha'
-const SEND_CENTS = 74000
-const RECEIVE_CENTS = 10000
-const BALANCE_TEXT = '$640.00'
+// A person and a few sends and payments, so Home shows a filled box, day labels and
+// cards on both halves of the centre line -- the widest Home the board draws.
+const SEEDED_PEOPLE = ['Ahmed Shifaz', 'Mariyam Nisha'] as const
 
 let stack: Stack
 let served: ServedOrigin
@@ -63,24 +70,34 @@ test.beforeAll(async () => {
   await seedHistory(
     stack,
     account,
-    [SEEDED_PERSON],
+    SEEDED_PEOPLE,
     [
       {
         kind: 'send',
         currency: 'USD',
-        amountMinor: SEND_CENTS,
+        amountMinor: 74000,
         rate: null,
-        usdCents: SEND_CENTS,
+        usdCents: 74000,
         entryDate: '2026-10-05',
         savedAt: '2026-10-05T09:00:00Z',
-        personName: SEEDED_PERSON,
+        personName: 'Mariyam Nisha',
+      },
+      {
+        kind: 'send',
+        currency: 'MVR',
+        amountMinor: 1540000,
+        rate: '15.4000',
+        usdCents: 100000,
+        entryDate: '2026-10-02',
+        savedAt: '2026-10-02T09:00:00Z',
+        personName: 'Ahmed Shifaz',
       },
       {
         kind: 'receive',
         currency: 'USD',
-        amountMinor: RECEIVE_CENTS,
+        amountMinor: 10000,
         rate: null,
-        usdCents: RECEIVE_CENTS,
+        usdCents: 10000,
         entryDate: '2026-10-08',
         savedAt: '2026-10-08T09:00:00Z',
       },
@@ -153,7 +170,7 @@ const expectNoHorizontalOverflow = async (page: Page, label: string): Promise<vo
 /** Every control a thumb must hit is at least 44 px tall. */
 const expectTouchTargets = async (page: Page, label: string): Promise<void> => {
   const small = await page.evaluate((minimum) => {
-    const selector = 'button, a, [data-person-chip], [data-quick], [data-square]'
+    const selector = 'button, a, [data-person-chip], [data-square]'
     const offenders: string[] = []
     for (const element of Array.from(document.querySelectorAll(selector))) {
       const rect = element.getBoundingClientRect()
@@ -172,29 +189,137 @@ const expectTouchTargets = async (page: Page, label: string): Promise<void> => {
   expect(small, `${label}: controls shorter than ${MIN_TOUCH} px`).toEqual([])
 }
 
-/** Walks Home, the send form and the receive form, applying the same checks to each. */
+/** The Send and Receive buttons stay clear of Android's gesture bar. */
+const expectBottomClearance = async (page: Page, label: string): Promise<void> => {
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error('no viewport')
+  for (const action of ['send', 'receive'] as const) {
+    const rect = await rectOf(page, `[data-action="${action}"]`)
+    expect(
+      viewport.height - (rect.y + rect.height),
+      `${label}: ${action} button's clearance below it`,
+    ).toBeGreaterThanOrEqual(BOTTOM_CLEARANCE_MIN - EPSILON)
+  }
+}
+
+/**
+ * A fingerprint of everything this oracle measures, so "at rest" can be decided from
+ * the page itself: the document's scrollable width, and the box of every element the
+ * checks look at. Two identical samples a few frames apart mean nothing is moving.
+ */
+const layoutSignature = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const root = document.documentElement
+    const parts = [`${root.scrollWidth}/${root.clientWidth}`]
+    const selector =
+      '[data-box], [data-action], [data-form], [data-entry], [data-after], [data-row], [data-pill], button, a'
+    for (const element of Array.from(document.querySelectorAll(selector))) {
+      const rect = element.getBoundingClientRect()
+      parts.push(
+        `${rect.left.toFixed(1)},${rect.top.toFixed(1)},${rect.width.toFixed(1)},${rect.height.toFixed(1)}`,
+      )
+    }
+    return parts.join('|')
+  })
+
+/** Whether the sliding currency pill has arrived over the pressed currency button. */
+const pillState = (page: Page, formKind: string): Promise<string> =>
+  page.evaluate((kind) => {
+    const form = document.querySelector(`[data-form="${kind}"]`)
+    if (!form) return 'no form'
+    const pill = form.querySelector('[data-pill]')
+    if (!pill) return 'no pill'
+    const currency = Array.from(form.querySelectorAll('button[aria-pressed]')).filter((button) =>
+      ['USD', 'MVR'].includes((button.textContent ?? '').trim()),
+    )
+    const pressed = currency.filter((button) => button.getAttribute('aria-pressed') === 'true')
+    if (pressed.length !== 1) return `pressed currencies: ${pressed.length}`
+    const pillBox = pill.getBoundingClientRect()
+    const pressedBox = pressed[0]!.getBoundingClientRect()
+    const pillCentre = pillBox.left + pillBox.width / 2
+    const pressedCentre = pressedBox.left + pressedBox.width / 2
+    return Math.abs(pillCentre - pressedCentre) <= 6 ? 'over the pressed half' : 'still sliding'
+  }, formKind)
+
+/**
+ * Waits until the screen is at rest: no element carries data-motion (value 7's
+ * entrances and value 6's save motion are over), the currency pill of a form has
+ * reached its pressed half, and the layout has stopped changing between samples.
+ */
+const settle = async (page: Page, label: string, formKind?: string): Promise<void> => {
+  await expect
+    .poll(() => page.locator('[data-motion]').count(), {
+      timeout: 5_000,
+      message: `${label}: every entrance has finished (no data-motion)`,
+    })
+    .toBe(0)
+
+  if (formKind) {
+    await expect
+      .poll(() => pillState(page, formKind), {
+        timeout: 5_000,
+        message: `${label}: the currency pill has reached the pressed half`,
+      })
+      .toBe('over the pressed half')
+  }
+
+  let previous = await layoutSignature(page)
+  await expect
+    .poll(
+      async () => {
+        await page.waitForTimeout(120)
+        const current = await layoutSignature(page)
+        const steady = current === previous
+        previous = current
+        return steady
+      },
+      { timeout: 5_000, message: `${label}: the layout has stopped moving` },
+    )
+    .toBe(true)
+}
+
+/**
+ * Walks the refined board's screens -- Home, the send form in USD and in MVR, and the
+ * receive form -- letting each come to rest before the checks run.
+ */
 const forEachScreen = async (
   page: Page,
   label: string,
   check: (screen: string) => Promise<void>,
 ): Promise<void> => {
   await expect(page.locator('[data-box="abbaas"]')).toBeVisible()
+  await settle(page, `${label} Home`)
   await check(`${label} Home`)
 
   await page.locator('[data-action="send"]').click()
   await expect(page.locator('[data-form="send"]')).toBeVisible()
-  await check(`${label} send form`)
+  await settle(page, `${label} send form USD`, 'send')
+  await check(`${label} send form USD`)
+
+  // The MVR state opens the rate row, which is the tallest the form gets.
+  await page.locator('[data-form="send"]').getByRole('button', { name: 'MVR', exact: true }).click()
+  await settle(page, `${label} send form MVR`, 'send')
+  await check(`${label} send form MVR`)
+
   await page.getByRole('button', { name: 'Close' }).click()
   await expect(page.locator('[data-form="send"]')).toHaveCount(0)
 
+  // Closing a form without saving replays Home's entrance, so Home settles again.
+  await expect(page.locator('[data-box="abbaas"]')).toBeVisible()
+  await settle(page, `${label} Home after Close`)
+
   await page.locator('[data-action="receive"]').click()
   await expect(page.locator('[data-form="receive"]')).toBeVisible()
+  await settle(page, `${label} receive form`, 'receive')
   await check(`${label} receive form`)
+
   await page.getByRole('button', { name: 'Close' }).click()
   await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
+  await expect(page.locator('[data-box="abbaas"]')).toBeVisible()
+  await settle(page, `${label} Home after Close`)
 }
 
-test('every screen fits the phone from 360 px, caps at a centred 560 px column, and keeps 44 px touch targets', async ({
+test('at rest, every screen fits the phone from 360 px, caps at a centred 560 px column, clears the gesture bar and keeps 44 px touch targets', async ({
   page,
 }) => {
   await page.setViewportSize({ width: WIDTHS[0].width, height: WIDTHS[0].height })
@@ -209,7 +334,9 @@ test('every screen fits the phone from 360 px, caps at a centred 560 px column, 
       await expectTouchTargets(page, screen)
     })
 
-    // ----- The column itself, measured on Home. -----
+    // ----- The column itself, measured on Home at rest. -----
+    await settle(page, `${label} Home column`)
+    await expectBottomClearance(page, `${label} Home`)
     const span = await occupiedSpan(page)
     const leftMargin = span.left
     const rightMargin = viewport.width - span.right
@@ -256,26 +383,18 @@ test('every screen fits the phone from 360 px, caps at a centred 560 px column, 
   expect(stylesheets.some((css) => css.includes('env(safe-area-inset-bottom)'))).toBe(true)
 })
 
-test('the palette and fonts of the final canvas are the ones the browser computes', async ({ page }) => {
+// The page colour of the board, which the refined screens keep. The box-amount font
+// probe of version one is not repeated here: the refined board splits a filled
+// amount across the dollars and a cents span, so the single-leaf probe no longer
+// names an element of this board; the board's own screens own that check.
+test('the page still paints the board colour under every screen', async ({ page }) => {
   await page.setViewportSize({ width: WIDTHS[0].width, height: WIDTHS[0].height })
   await signIn(page)
+  await settle(page, 'Home palette')
 
   expect(await page.evaluate(() => window.getComputedStyle(document.body).backgroundColor)).toBe(
-    PAGE_BACKGROUND,
+    'rgb(244, 247, 246)',
   )
-
-  // The box amount is the innermost element inside the filled box that reads the
-  // balance; the design sets Manrope on it.
-  const abbaas = page.locator('[data-box="abbaas"]')
-  await expect(abbaas).toContainText(BALANCE_TEXT)
-  const amountFont = await abbaas.evaluate((box, amountText) => {
-    const candidates = Array.from(box.querySelectorAll('*')).filter(
-      (element) => element.children.length === 0 && (element.textContent ?? '').trim() === amountText,
-    )
-    const target = candidates[candidates.length - 1] ?? box
-    return window.getComputedStyle(target).fontFamily
-  }, BALANCE_TEXT)
-  expect(amountFont.replace(/["']/g, '')).toMatch(/^Manrope/)
 })
 
 test('Chrome can add the app to the home screen: manifest, icons, theme colour and a service worker', async ({

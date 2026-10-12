@@ -32,6 +32,24 @@ export const todayIso = (now: Date = new Date()): string => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+/**
+ * The words the board's date chip reads, so a day can be recognised without
+ * opening the picker: today says so by name, and any other day is given its
+ * weekday and date in the fixed en-GB shape 'Sat, 10 Oct'. Both carry the day
+ * and the month, so the two never read as different kinds of thing.
+ */
+export const dateChipWords = (isoDate: string, today: string = todayIso()): string => {
+  const parts = isoDate.split('-').map(Number)
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return isoDate
+  // Built from the parts rather than parsed, so the day is read in the device's
+  // own zone and never slips to the one before it.
+  const day = new Date(parts[0]!, parts[1]! - 1, parts[2]!)
+  const month = day.toLocaleDateString('en-GB', { month: 'short' })
+  const tail = `${day.getDate()} ${month}`
+  if (isoDate === today) return `Today, ${tail}`
+  return `${day.toLocaleDateString('en-GB', { weekday: 'short' })}, ${tail}`
+}
+
 export const emptySendDraft = (today: string = todayIso()): SendDraft => ({
   currency: 'USD',
   amountText: '',

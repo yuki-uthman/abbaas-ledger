@@ -7,6 +7,14 @@
 // A receive is money back from Abbaas himself, so unlike a send it names no
 // person: there is nothing to choose, and a positive amount is the whole
 // condition for saving.
+//
+// The refined board's form shows no over-payment note, no quick amounts and no
+// after-saving preview, so it asks none of receiveNoteFor, amountTextForCents or
+// balanceAfterReceive: those remain the arithmetic of what a payment WOULD
+// leave behind, which Home works out for itself from the stored rows.
+//
+// It also carries no note field, so draft.note is never typed into and every
+// payment stores a null note.
 import { balanceOf, type Balance } from './balance.js'
 import {
   formatUsdCents,
@@ -52,7 +60,10 @@ export const receiveUsdCents = (draft: ReceiveDraft): number => {
   return laariToUsdCents(laari, rateScaled)
 }
 
-/** A payment is savable as soon as it is worth more than nothing. */
+/**
+ * A payment is savable as soon as it is worth more than nothing, which in MVR
+ * also means a rate has been typed: without one the rufiyaa are worth 0 dollars.
+ */
 export const canSaveReceive = (draft: ReceiveDraft): boolean => receiveUsdCents(draft) > 0
 
 /**
