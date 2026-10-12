@@ -91,6 +91,27 @@ const plainLabel = (date: string): string => {
 export const dayLabel = (date: string, today: string): string =>
   date === today ? `Today · ${plainLabel(date)}` : plainLabel(date)
 
+/**
+ * What the Entries count reads beside its heading: 'No entries' when the ledger
+ * is empty, '1 entry' for a single one, and 'N entries' otherwise. Counted here
+ * rather than in the DOM so the words are a function of the entries alone.
+ */
+export const entryCountLabel = (count: number): string => {
+  if (count <= 0) return 'No entries'
+  if (count === 1) return '1 entry'
+  return `${count} entries`
+}
+
+/**
+ * A formatted USD figure split at its decimal point, so the cents can be drawn
+ * at half the size of the dollars while the figure still reads end to end.
+ */
+export const splitAmount = (formatted: string): { dollars: string; cents: string } => {
+  const point = formatted.lastIndexOf('.')
+  if (point < 0) return { dollars: formatted, cents: '' }
+  return { dollars: formatted.slice(0, point), cents: formatted.slice(point) }
+}
+
 const holderOf = (afterCents: number): AfterHolder => {
   if (afterCents > 0) return 'abbaas'
   if (afterCents < 0) return 'you'

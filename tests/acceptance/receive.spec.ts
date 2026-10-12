@@ -9,19 +9,23 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, readEntries, seedUsdSend, type Account } from '../support/accounts.js'
 
-// Value 5: recording a repayment from Abbaas.
+// Refined board value 4: the receive form as on the refined board.
 //
 // Judged through the declared public port only: the built bundle's DOM (Home's
-// Receive button and balance boxes, the teal receive form with its currency
-// buttons, Amount received field, quick amounts, note and preview boxes, and
-// Home's centre-line entries) and, outside the browser, the rows the app stored.
+// Receive button and balance boxes, the teal receive form with its frame,
+// currency switch, Amount received field, date chip and white Receive button,
+// and Home's centre-line cards) and, outside the browser, the rows the app
+// stored. The refined board drops the quick amounts, the note field, the
+// after-saving preview and the over-payment note, and moves payments to the
+// RIGHT of the centre line, so this oracle replaces version one's at this path.
 
 const PASSWORD_FIELD = 'input[type="password"]'
-const VIEWPORT = { width: 360, height: 780 } as const
+/** The refined board's reference phone. */
+const VIEWPORT = { width: 390, height: 844 } as const
 
 const RECEIVE_ACCOUNT = {
-  email: 'owner-receive@abbaas.test',
-  password: 'receive-password-5',
+  email: 'owner-receive-refined@abbaas.test',
+  password: 'receive-password-r4',
 } as const
 
 // Abbaas starts out holding $740.00 of the owner's money.
@@ -29,13 +33,12 @@ const SEEDED_PERSON = 'Mariyam Nisha'
 const SEEDED_SEND_CENTS = 74000
 const SEEDED_SEND_DATE = '2026-10-05'
 
-const RATE_LABEL = 'Rate (MVR per $1)'
-
 let stack: Stack
 let served: ServedOrigin
 let account: Account
 
 test.describe.configure({ mode: 'serial' })
+test.use({ viewport: VIEWPORT })
 
 test.beforeAll(async () => {
   stack = startLocalStack()
@@ -60,20 +63,64 @@ const signIn = async (page: Page): Promise<void> => {
   await page.getByLabel('Password').fill(account.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator(PASSWORD_FIELD)).toHaveCount(0)
+  // A fresh Home enters: its root carries data-motion while the boxes rise, the
+  // balance counts up from $0 and each card slides in from its side.
+  await expect(page.locator('[data-box="you"]')).toBeVisible()
+  await settle(page)
+}
+
+/**
+ * Saving grows Home from the save button, brings the new card in from its own
+ * side and counts the boxes, each marked with data-motion while it runs.
+ * Positions and box amounts are only the settled truth once nothing in the
+ * document is still moving, so every read after a save waits for that first.
+ */
+const settle = async (page: Page): Promise<void> => {
+  await expect(page.locator('[data-motion]')).toHaveCount(0)
+}
+
+/**
+ * The currency pill travels under its pressed label on a CSS transition, which
+ * carries no data-motion of its own. Two equal reads across animation frames are
+ * no proof of rest for a compositor transition, so the resting claim itself is
+ * polled: the pill's centre must come to lie within the pressed button's x span.
+ */
+const expectPillOver = async (page: Page, button: Locator): Promise<void> => {
+  const pill = page.locator('[data-pill]')
+  await expect(pill).toBeVisible()
+  const buttonRect = await button.boundingBox()
+  if (!buttonRect) throw new Error('The currency switch has no layout box')
+  await expect
+    .poll(
+      async () => {
+        const rect = await pill.boundingBox()
+        if (!rect) return false
+        const centreX = rect.x + rect.width / 2
+        return centreX >= buttonRect.x && centreX <= buttonRect.x + buttonRect.width
+      },
+      { timeout: 2000 },
+    )
+    .toBe(true)
+  const pillRect = await pill.boundingBox()
+  if (!pillRect) throw new Error('The currency pill has no layout box')
+  const pillCentreX = pillRect.x + pillRect.width / 2
+  expect(pillCentreX).toBeGreaterThanOrEqual(buttonRect.x)
+  expect(pillCentreX).toBeLessThanOrEqual(buttonRect.x + buttonRect.width)
 }
 
 const openReceiveForm = async (page: Page): Promise<Locator> => {
   await page.locator('[data-action="receive"]').click()
   const form = page.locator('[data-form="receive"]')
   await expect(form).toBeVisible()
+  // The form reveals and its rows rise in; geometry is only settled after that.
+  await settle(page)
   return form
 }
 
-const saveButton = (page: Page): Locator => page.getByRole('button', { name: /^Save entry/ })
-const receiveNote = (page: Page): Locator => page.locator('[data-receive-note]')
-const allOfIt = (page: Page): Locator => page.getByRole('button', { name: /^All of it/ })
+/** The board's white save button names itself after the worked-out dollars. */
+const saveButton = (page: Page): Locator => page.getByRole('button', { name: /^Receive · / })
 
-/** A receive carries data-entry and no data-person, so it is found by its party. */
+/** A payment carries data-entry and no data-person, so it is found by its party. */
 const receiveEntries = (page: Page): Locator =>
   page.locator('[data-entry]').filter({ hasText: 'from Abbaas' })
 
@@ -83,23 +130,28 @@ const expectEmptyBox = async (box: Locator): Promise<void> => {
 }
 
 /**
- * A newly saved entry and the balance boxes animate on arriving Home, carrying
- * data-motion while they do. Positions and box amounts are only the settled
- * truth once nothing in the document is still moving, so every read after a
- * save waits for that first.
+ * The refined board puts a payment's card on the right of the centre line. The
+ * app is one centred column that fills this 390 px phone, so the centre line is
+ * the middle of the viewport.
  */
-const settle = async (page: Page): Promise<void> => {
-  await expect(page.locator('[data-motion]')).toHaveCount(0)
-}
-
-const expectWhollyInLeftHalf = async (element: Locator): Promise<void> => {
+const expectWhollyInRightHalf = async (element: Locator): Promise<void> => {
   const rect = await element.boundingBox()
-  if (!rect) throw new Error('The entry has no layout box')
-  expect(rect.x).toBeGreaterThanOrEqual(0)
-  expect(rect.x + rect.width).toBeLessThanOrEqual(VIEWPORT.width / 2)
+  if (!rect) throw new Error('The card has no layout box')
+  expect(rect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
+  expect(rect.x + rect.width).toBeLessThanOrEqual(VIEWPORT.width)
 }
 
-test('a repayment lowers what Abbaas holds, can clear it, and moves the balance to the owner when it is larger', async ({
+/** The form must offer none of version one's extras, in any state. */
+const expectNoVersionOneExtras = async (page: Page): Promise<void> => {
+  await expect(page.locator('[data-quick]')).toHaveCount(0)
+  await expect(page.getByText('All of it', { exact: false })).toHaveCount(0)
+  await expect(page.getByLabel('Note')).toHaveCount(0)
+  await expect(page.locator('[data-preview-box]')).toHaveCount(0)
+  await expect(page.getByText('After saving', { exact: false })).toHaveCount(0)
+  await expect(page.locator('[data-receive-note]')).toHaveCount(0)
+}
+
+test('the refined receive form records a payment right of the line, clears the balance, and moves it to the owner', async ({
   page,
 }) => {
   await signIn(page)
@@ -107,6 +159,7 @@ test('a repayment lowers what Abbaas holds, can clear it, and moves the balance 
   // ----- Where the balance starts: Abbaas holds $740.00. -----
   const abbaasBox = page.locator('[data-box="abbaas"]')
   const youBox = page.locator('[data-box="you"]')
+  await settle(page)
   await expect(abbaasBox).toHaveAttribute('data-amount', String(SEEDED_SEND_CENTS))
   await expect(abbaasBox).toContainText('$740.00')
   await expectEmptyBox(youBox)
@@ -115,60 +168,59 @@ test('a repayment lowers what Abbaas holds, can clear it, and moves the balance 
   // ===== First payment: $300, less than he holds. =====
   const form = await openReceiveForm(page)
   await expect(page).toHaveURL(/#receive$/)
-  await expect(form).toContainText('Payment from Abbaas')
   await expect(form).toHaveCSS('background-color', 'rgb(15, 111, 104)')
 
+  // ----- The board's frame: Close, the balance line, eyebrow and title. -----
+  await expect(form.getByRole('button', { name: 'Close' })).toBeVisible()
+  await expect(form).toContainText('Abbaas has $740.00 of yours')
+  await expect(form).toContainText('New entry · Receive')
+  await expect(form.getByRole('heading', { name: 'Payment from Abbaas' })).toBeVisible()
+
+  // ----- The currency switch: USD pressed with the white pill over it. -----
   const usdButton = page.getByRole('button', { name: 'USD', exact: true })
   const mvrButton = page.getByRole('button', { name: 'MVR', exact: true })
   await expect(usdButton).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByLabel('Amount received')).toBeVisible()
+  await expect(mvrButton).toHaveAttribute('aria-pressed', 'false')
+  await expectPillOver(page, usdButton)
 
-  // Nothing typed: no value to save and no note to show.
+  // ----- The large amount field with its prefix. -----
+  const amount = page.getByLabel('Amount received')
+  await expect(amount).toBeVisible()
+  await expect(amount).toHaveCSS('font-size', '44px')
+  await expect(page.locator('[data-prefix]')).toHaveText('$')
+
+  // ----- The date chip: today, over a transparent date input. -----
+  const today = await page.evaluate(() => {
+    const now = new Date()
+    const pad = (value: number): string => String(value).padStart(2, '0')
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  })
+  await expect(page.getByLabel('Date')).toHaveValue(today)
+  await expect(form.getByText(/^Today, \d{1,2} [A-Z][a-z]{2}$/)).toBeVisible()
+
+  // ----- Nothing typed: nothing to save, and none of version one's extras. -----
   await expect(saveButton(page)).toBeDisabled()
-  await expect(receiveNote(page)).toHaveCount(0)
+  await expectNoVersionOneExtras(page)
 
-  // The quick amounts, including the one that names what he currently holds.
-  await expect(page.locator('[data-quick]')).toHaveCount(3)
-  await expect(allOfIt(page)).toHaveText('All of it · $740.00')
-  await expect(page.getByRole('button', { name: '$500', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '$1,000', exact: true })).toBeVisible()
+  // An amount larger than he holds still raises no note on the refined board.
+  await amount.fill('900')
+  await expectNoVersionOneExtras(page)
 
-  // ----- Rufiyaa works here exactly as on the send form. -----
-  await mvrButton.click()
-  await expect(mvrButton).toHaveAttribute('aria-pressed', 'true')
-  await page.getByLabel('Amount received').fill('1,540')
-  await page.getByLabel(RATE_LABEL).fill('15.40')
-  await expect(page.locator('[data-usd]')).toHaveText('$100.00')
-  await expect(page.locator('[data-preview-box="abbaas"]')).toHaveAttribute('data-amount', '64000')
-
-  // A quick amount switches the currency back to dollars.
-  await page.getByRole('button', { name: '$500', exact: true }).click()
-  await expect(usdButton).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByLabel(RATE_LABEL)).toHaveCount(0)
-  await expect(page.getByLabel('Amount received')).toHaveValue(/^500(\.00)?$/)
-  await expect(page.locator('[data-preview-box="abbaas"]')).toHaveAttribute('data-amount', '24000')
-
-  // ----- $300: it leaves money with him, so there is no note. -----
-  await page.getByLabel('Amount received').fill('300')
-  await expect(receiveNote(page)).toHaveCount(0)
-  const abbaasPreview = page.locator('[data-preview-box="abbaas"]')
-  await expect(abbaasPreview).toHaveAttribute('data-state', 'filled')
-  await expect(abbaasPreview).toHaveAttribute('data-amount', '44000')
-  await expectEmptyBox(page.locator('[data-preview-box="you"]'))
-
-  const save = saveButton(page)
+  // ----- $300, saved by the white button that names its dollars. -----
+  await amount.fill('300')
+  const save = page.getByRole('button', { name: 'Receive · $300.00', exact: true })
   await expect(save).toBeEnabled()
   await save.click()
 
-  // ----- Home: the receive sits in the left half and his box has dropped. -----
+  // ----- Home: the payment card sits in the RIGHT half and his box dropped. -----
+  await settle(page)
   await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
   await expect(page.locator('[data-entry]')).toHaveCount(2)
-  await settle(page)
-  const firstReceive = receiveEntries(page)
-  await expect(firstReceive).toHaveCount(1)
-  await expect(firstReceive).toContainText('$300.00')
-  await expect(firstReceive.locator('[data-person]')).toHaveCount(0)
-  await expectWhollyInLeftHalf(firstReceive)
+  const firstPayment = receiveEntries(page)
+  await expect(firstPayment).toHaveCount(1)
+  await expect(firstPayment).toContainText('$300.00')
+  await expect(firstPayment.locator('[data-person]')).toHaveCount(0)
+  await expectWhollyInRightHalf(firstPayment)
 
   await expect(abbaasBox).toHaveAttribute('data-state', 'filled')
   await expect(abbaasBox).toHaveAttribute('data-amount', '44000')
@@ -176,46 +228,34 @@ test('a repayment lowers what Abbaas holds, can clear it, and moves the balance 
   await expectEmptyBox(youBox)
   await expect(page.locator('[data-square]')).toHaveCount(0)
 
-  // ===== Second payment: All of it, which clears the balance. =====
+  // ===== Second payment: $440, exactly what he holds, so it clears. =====
   await openReceiveForm(page)
-  await expect(allOfIt(page)).toHaveText('All of it · $440.00')
-  await allOfIt(page).click()
-  await expect(page.getByLabel('Amount received')).toHaveValue(/^440(\.00)?$/)
-  await expect(receiveNote(page)).toHaveText('This clears it. You will be all square.')
-  await expectEmptyBox(page.locator('[data-preview-box="abbaas"]'))
-  await expectEmptyBox(page.locator('[data-preview-box="you"]'))
-  await saveButton(page).click()
+  await expect(page.locator('[data-form="receive"]')).toContainText('Abbaas has $440.00 of yours')
+  await expectNoVersionOneExtras(page)
+  await page.getByLabel('Amount received').fill('440')
+  await page.getByRole('button', { name: 'Receive · $440.00', exact: true }).click()
 
+  await settle(page)
   await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
   await expect(page.locator('[data-entry]')).toHaveCount(3)
-  await settle(page)
   await expectEmptyBox(abbaasBox)
   await expectEmptyBox(youBox)
-  await expect(page.locator('[data-square]')).toHaveText('All square')
+  await expect(page.locator('[data-square]')).toBeVisible()
 
-  // ===== Third payment: $1,000 when he holds nothing. =====
+  // ===== Third payment: $200 when he holds nothing, so it crosses over. =====
   await openReceiveForm(page)
-  // With nothing of the owner's left, there is no 'All of it' to offer.
-  await expect(allOfIt(page)).toHaveCount(0)
-  await page.getByRole('button', { name: '$1,000', exact: true }).click()
-  await expect(page.getByLabel('Amount received')).toHaveValue(/^1,?000(\.00)?$/)
-  await expect(receiveNote(page)).toHaveText(
-    'This is $1,000.00 more than he has of yours. The balance moves to your side: you will have $1,000.00 of his.',
-  )
-  const youPreview = page.locator('[data-preview-box="you"]')
-  await expect(youPreview).toHaveAttribute('data-state', 'filled')
-  await expect(youPreview).toHaveAttribute('data-amount', '100000')
-  await expectEmptyBox(page.locator('[data-preview-box="abbaas"]'))
-  await saveButton(page).click()
+  await expectNoVersionOneExtras(page)
+  await page.getByLabel('Amount received').fill('200')
+  await page.getByRole('button', { name: 'Receive · $200.00', exact: true }).click()
 
   // ----- Home: the money is now on the owner's side, unsigned. -----
+  await settle(page)
   await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
   await expect(page.locator('[data-entry]')).toHaveCount(4)
-  await settle(page)
   await expect(receiveEntries(page)).toHaveCount(3)
   await expect(youBox).toHaveAttribute('data-state', 'filled')
-  await expect(youBox).toHaveAttribute('data-amount', '100000')
-  await expect(youBox).toContainText('$1,000.00')
+  await expect(youBox).toHaveAttribute('data-amount', '20000')
+  await expect(youBox).toContainText('$200.00')
   await expect(youBox).toContainText('have his money')
   const youText = (await youBox.innerText()).replace(/\s+/g, ' ')
   expect(youText).not.toContain('+')
@@ -223,10 +263,10 @@ test('a repayment lowers what Abbaas holds, can clear it, and moves the balance 
   await expectEmptyBox(abbaasBox)
   await expect(page.locator('[data-square]')).toHaveCount(0)
 
-  // Every receive is wholly in the left half, none claims a person.
-  for (const entry of await receiveEntries(page).all()) {
-    await expectWhollyInLeftHalf(entry)
-    await expect(entry.locator('[data-person]')).toHaveCount(0)
+  // Every payment card is wholly in the right half, none claims a person.
+  for (const card of await receiveEntries(page).all()) {
+    await expectWhollyInRightHalf(card)
+    await expect(card.locator('[data-person]')).toHaveCount(0)
   }
 
   // ===== Closing the form, by its own control and by the back button. =====
@@ -234,29 +274,27 @@ test('a repayment lowers what Abbaas holds, can clear it, and moves the balance 
   await page.getByRole('button', { name: 'Close' }).click()
   await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
   await expect(youBox).toBeVisible()
+  await settle(page)
 
   await openReceiveForm(page)
   await page.goBack()
   await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
   await expect(youBox).toBeVisible()
+  await settle(page)
 
   // ===== What was stored, read outside the browser. =====
-  const today = await page.evaluate(() => {
-    const now = new Date()
-    const pad = (value: number): string => String(value).padStart(2, '0')
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-  })
-
   const stored = await readEntries(stack, account)
   expect(stored).toHaveLength(4)
   const receives = stored.filter((row) => row.kind === 'receive')
-  expect(receives.map((row) => row.usd_cents)).toEqual([30000, 44000, 100000])
+  expect(receives.map((row) => row.usd_cents)).toEqual([30000, 44000, 20000])
   for (const row of receives) {
     expect(row.currency).toBe('USD')
     expect(row.amount_minor).toBe(row.usd_cents)
     expect(row.rate).toBeNull()
     expect(row.entry_date).toBe(today)
-    // A receive is money back from Abbaas himself: it names no person.
+    // The refined form has no note field, so nothing is stored in that column.
+    expect(row.note).toBeNull()
+    // A payment is money back from Abbaas himself: it names no person.
     expect(row.person_id).toBeNull()
     expect(row.person_name).toBeNull()
   }
@@ -265,4 +303,52 @@ test('a repayment lowers what Abbaas holds, can clear it, and moves the balance 
   const sends = stored.filter((row) => row.kind === 'send')
   expect(sends).toHaveLength(1)
   expect(sends[0]!.usd_cents).toBe(SEEDED_SEND_CENTS)
+})
+
+test('in rufiyaa the receive form opens the rate card beside the white In dollars card', async ({
+  page,
+}) => {
+  await signIn(page)
+  const form = await openReceiveForm(page)
+
+  const mvrButton = page.getByRole('button', { name: 'MVR', exact: true })
+  await mvrButton.click()
+  await expect(mvrButton).toHaveAttribute('aria-pressed', 'true')
+
+  // The pill slides under MVR over 300 ms and the rate row rises in; the pill's
+  // arrival is polled rather than guessed from equal frames.
+  await settle(page)
+  await expectPillOver(page, mvrButton)
+  await expect(page.locator('[data-prefix]')).toHaveText('MVR')
+
+  // The same rate row as the send form: the rate card and the In dollars card.
+  const rate = page.getByLabel('Rate · MVR per $1')
+  await expect(rate).toBeVisible()
+  const inDollars = form.getByText('In dollars', { exact: true })
+  await expect(inDollars).toBeVisible()
+  // Side by side: both cards' labels sit on one row, In dollars to the right.
+  const rateLabel = form.getByText('Rate · MVR per $1', { exact: true })
+  const rateRect = await rateLabel.boundingBox()
+  const dollarsRect = await inDollars.boundingBox()
+  if (!rateRect || !dollarsRect) throw new Error('The rate row has no layout box')
+  expect(dollarsRect.x).toBeGreaterThan(rateRect.x + rateRect.width)
+  expect(Math.abs(dollarsRect.y - rateRect.y)).toBeLessThanOrEqual(8)
+
+  // The worked-out dollars drive the output and the button's name.
+  await page.getByLabel('Amount received').fill('1,540')
+  await rate.fill('15.40')
+  await expect(page.locator('[data-usd]')).toHaveText('$100.00')
+  await expect(
+    page.getByRole('button', { name: 'Receive · $100.00', exact: true }),
+  ).toBeEnabled()
+
+  // A missing rate refuses the save and nothing is stored.
+  await rate.fill('')
+  await expect(saveButton(page)).toBeDisabled()
+
+  // Still none of version one's extras in the rufiyaa state.
+  await expectNoVersionOneExtras(page)
+
+  await page.getByRole('button', { name: 'Close' }).click()
+  await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
 })

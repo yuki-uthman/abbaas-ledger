@@ -20,6 +20,15 @@
   --title-font: 'Manrope', system-ui, sans-serif;
   --body-font: 'Source Sans 3', system-ui, sans-serif;
 
+  /* The refined board's own inks: a softer grey for captions and details, and
+     the two deeper holder colours the after-balances are read in. */
+  --muted: #4c5f5b;
+  --you-deep: #1b3f6e;
+  --abbaas-deep: #0b5750;
+  --you-card: rgba(36, 80, 138, 0.1);
+  --abbaas-card: rgba(15, 111, 104, 0.11);
+  --hairline: #cfd9d6;
+
   --side: 16px;
   --bottom-gap: 20px;
   --button-height: 60px;
@@ -82,36 +91,55 @@ body {
   padding-bottom: calc(var(--button-height) + var(--bottom-safe) + var(--bottom-gap) + 104px);
 }
 
-.home h1 {
-  margin: 0 0 16px;
-  font-family: var(--title-font);
-  font-size: 22px;
-  font-weight: 800;
+/* Home carries no title at all: the box row is the top of the screen, 24 px
+   below its edge and clear of whatever notch the device claims. */
+.home {
+  padding-top: calc(24px + env(safe-area-inset-top));
 }
 
-/* --- The balance card: You on the left, Abbaas on the right. --- */
+/* --- The two boxes: You on the left, Abbaas on the right, each with its name
+       pill in its own outer top corner and its amount on that same edge. --- */
 
 .boxes {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: stretch;
 }
 
 .box {
   flex: 1 1 0;
   min-width: 0;
+  min-height: 136px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* The pill at the top, the amount and its caption at the bottom. */
+  justify-content: space-between;
   gap: 8px;
-  padding: 18px 12px;
+  padding: 14px;
   border-radius: 20px;
-  text-align: center;
+}
+
+/* The outer edge each box reads from: away from the centre line between them. */
+.box[data-box='you'] {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.box[data-box='abbaas'] {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.box-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .box[data-state='empty'] {
   background: transparent;
-  border: 2px dashed var(--abbaas-dash);
+  border: 1.5px dashed var(--abbaas-dash);
 }
 
 .box[data-box='you'][data-state='empty'] {
@@ -120,52 +148,71 @@ body {
 
 .box[data-box='you'][data-state='filled'] {
   background: var(--you-tint);
-  border: 2px solid transparent;
+  border: 1.5px solid transparent;
 }
 
 .box[data-box='abbaas'][data-state='filled'] {
   background: var(--abbaas-tint);
-  border: 2px solid transparent;
+  border: 1.5px solid transparent;
 }
 
 .box-pill {
-  padding: 4px 12px;
+  flex: 0 0 auto;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
   border-radius: 999px;
+  font-family: var(--title-font);
   font-size: 13px;
   font-weight: 700;
 }
 
 .box[data-box='you'] .box-pill {
-  background: #eef2f1;
+  background: var(--page);
   color: var(--ink);
 }
 
 .box[data-box='abbaas'] .box-pill {
-  background: var(--abbaas-pill);
-  color: var(--abbaas);
+  background: #c9e4df;
+  color: var(--abbaas-deep);
 }
 
 .box-amount {
   font-family: var(--title-font);
-  font-size: 26px;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+/* The cents are read at half the dollars' size, and travel with them: the span
+   is inside the amount, so the figure still reads '$490.00' end to end. */
+.box-amount [data-cents] {
+  font-size: 0.5em;
   font-weight: 800;
 }
 
-.box[data-box='you'] .box-amount {
-  color: var(--you);
+.box[data-box='you'][data-state='filled'] .box-amount {
+  color: var(--you-deep);
 }
 
-.box[data-box='abbaas'] .box-amount {
-  color: var(--abbaas);
+.box[data-box='abbaas'][data-state='filled'] .box-amount {
+  color: var(--abbaas-deep);
 }
 
+/* An empty box claims nothing, and reads smaller for saying so. */
 .box[data-state='empty'] .box-amount {
-  color: var(--ink-soft);
+  font-size: 24px;
+  color: #7c8c88;
+}
+
+.box[data-state='empty'] .box-caption {
+  color: #7c8c88;
 }
 
 .box-caption {
   font-size: 13px;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 .square-chip {
@@ -184,13 +231,55 @@ body {
   font-weight: 600;
 }
 
+/* One row: what was sent at the left, what came back at the right. */
 .totals {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   gap: 16px;
-  margin: 12px 0 0;
+  margin: 14px 0 0;
   font-size: 13px;
-  color: var(--ink-soft);
+  color: var(--muted);
+}
+
+/* The sentence is soft and the figure in it is not: only the amount is inked. */
+.totals .totals-figure {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* --- The Entries heading and its count, on one row under the totals. --- */
+
+.entries-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.entries-header h2 {
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.entries-count {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* --- The fade over the foot of the list, under the bottom buttons. --- */
+
+.list-fade {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 150px;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(to bottom, rgba(244, 247, 246, 0) 0%, var(--page) 55%, var(--page) 100%);
 }
 
 /* --- The empty-ledger hint. --- */
@@ -216,10 +305,12 @@ body {
   color: var(--ink);
 }
 
-/* --- The Saved message with Undo, right after a save. ---
-   It sits in the gap above the two bottom buttons and never covers them: its
-   own bottom edge stops a clear 12 px short of the buttons' top edge, so both
-   stay fully visible and tappable. */
+/* --- Refined board value 5: the dark Saved message with Undo. ---
+   The board draws it as a dark bar riding just above the two bottom buttons,
+   16 px in from each side like every other control in the column. Its bottom
+   edge is held 96 px above the bottom edge (plus whatever gesture bar the
+   device claims), which is clear of the buttons' own top edge, so both buttons
+   stay fully visible and tappable under it. */
 
 .saved-message {
   position: fixed;
@@ -228,34 +319,57 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: var(--bar-width);
-  bottom: calc(var(--bottom-safe) + var(--button-height) + 12px);
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 3;
   margin: 0;
-  padding: 10px 10px 10px 16px;
-  border-radius: 18px;
-  background: var(--ink);
+  padding: 4px 6px 4px 12px;
+  border-radius: 16px;
+  background: #0d1f1c;
   color: #ffffff;
   display: flex;
   align-items: center;
-  gap: 12px;
+  /* A failed Undo reports on a line of its own under the sentence. */
+  flex-wrap: wrap;
+  gap: 10px;
+  box-shadow: 0 10px 24px rgba(13, 31, 28, 0.28);
   font-size: 14px;
   line-height: 1.35;
+}
+
+/* The round teal tick the bar starts with. */
+.saved-tick {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #29b3a6;
+  color: #0d1f1c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .saved-text {
   flex: 1 1 auto;
   min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
 }
 
+/* Undo carries no box of its own: on the dark bar it is the word alone, in the
+   board's light teal, at a thumb's height. */
 .undo-button {
   flex: 0 0 auto;
-  min-height: 44px;
-  padding: 0 16px;
+  min-height: var(--touch);
+  padding: 0 10px;
   border: 0;
-  border-radius: 14px;
-  background: #ffffff;
-  color: var(--ink);
-  font-family: var(--title-font);
-  font-size: 15px;
+  background: none;
+  color: #7fe0d4;
+  font-family: var(--body-font);
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -285,6 +399,8 @@ body {
   bottom: var(--bottom-safe);
   display: flex;
   gap: 12px;
+  /* Over the fade that covers the list behind them. */
+  z-index: 2;
 }
 
 .bottom-button {
@@ -315,20 +431,42 @@ body {
   font-size: 18px;
 }
 
-/* --- The entry list keeps value 1's shape until value 6 reshapes it. --- */
+/* --- The entry list on the refined board: a centre line with tinted cards
+       beside it, sends on the LEFT and payments from Abbaas on the right, each
+       answered across the line by what it leaves behind. --- */
 
 .home ul[data-entries] {
   list-style: none;
-  margin: 24px 0 0;
-  padding: 0;
+  margin: 14px 0 0;
+  /* The last entry can be scrolled clear of the fade and the buttons. */
+  padding: 0 0 120px;
   position: relative;
 }
 
 /* The centre line runs down the middle of the list. Entries sit beside it,
-   never across it: a send wholly in the right half, a repayment wholly in the
-   left half. */
-.home ul[data-entries]::before {
-  content: '';
+   never across it: a send wholly in the left half, a payment from Abbaas wholly
+   in the right half.
+
+   It is an element of its own rather than a pseudo-element, because the opening
+   entrance draws it down from its top and nothing can name or measure a
+   pseudo-element; the list's own positioned content paints over it, so the day
+   labels still sit astride it. */
+.entries-area {
+  position: relative;
+  /* A card arriving from its own side starts 28 px out, which on a 360 px screen
+     would reach past the screen's edge and widen the page for the frames it is
+     travelling. Clipped here, the card is cut at the list's own edge instead, so
+     no frame of the entrance can scroll sideways.
+
+     clip and not hidden, and on the one axis only: hidden would make this a
+     scroll container vertically too, which would trap the page's own scrolling
+     and cut the node circles that straddle the line. clip on a single axis
+     leaves the other overflow visible, so the list still grows downward as far
+     as its entries need and nothing is cut off the top or bottom of it. */
+  overflow-x: clip;
+}
+
+.list-spine {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -336,67 +474,92 @@ body {
   width: 2px;
   margin-left: -1px;
   background: #dfe6e4;
+  /* The line is drawn downward from the top of the list (value 7). */
+  transform-origin: top center;
 }
 
+/* Three parts across the full width: the card on its own half, the node column
+   straddling the centre line, and the after-balance on the other half. Each
+   card therefore lies wholly on its own side of the line at every width. */
 .entry {
-  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 36px 1fr;
+  align-items: start;
+  margin: 0 0 12px;
+}
+
+.entry-card {
+  min-width: 0;
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 0 0 14px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 14px;
 }
 
-/* The halves. The gap past 50% keeps the whole element off the line. */
-.entry[data-side='right'] {
-  margin-left: calc(50% + 6px);
+/* A send is drawn on the left of the line and reads from the left; a payment
+   from Abbaas is drawn on the right and reads from the right. */
+.entry[data-side='left'] .entry-card {
+  grid-column: 1;
+  background: var(--you-card);
+  text-align: left;
 }
 
-.entry[data-side='left'] {
-  margin-right: calc(50% + 6px);
-  flex-direction: row-reverse;
+.entry[data-side='right'] .entry-card {
+  grid-column: 3;
+  background: var(--abbaas-card);
   text-align: right;
+}
+
+.entry-node-cell {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .entry-node {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  font-size: 13px;
-}
-
-.entry[data-side='right'] .entry-node {
-  background: var(--you);
+  font-size: 14px;
 }
 
 .entry[data-side='left'] .entry-node {
-  background: var(--abbaas);
+  background: var(--you);
 }
 
-.entry-body {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.entry[data-side='right'] .entry-node {
+  background: var(--abbaas);
 }
 
 .entry-amount {
   font-family: var(--title-font);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
+}
+
+.entry[data-side='left'] .entry-amount {
+  color: var(--you);
+}
+
+.entry[data-side='right'] .entry-amount {
+  color: var(--abbaas);
 }
 
 .entry-party {
   font-size: 13px;
+  font-weight: 700;
 }
 
 .entry-detail {
   font-size: 12px;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 /* --- Value 6: the day groups, and what each entry leaves behind it. --- */
@@ -408,16 +571,18 @@ body {
 
 /* The date sits astride the centre line, so the two halves read under one day. */
 .day-label {
-  margin: 0 0 12px;
+  margin: 14px auto 12px;
   width: fit-content;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 3px 12px;
+  padding: 3px 10px;
   border-radius: 999px;
-  background: #e8eceb;
-  color: var(--ink-soft);
-  font-size: 12px;
+  background: var(--page);
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+  font-family: var(--title-font);
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   /* Above the centre line, which runs behind the whole list. */
   position: relative;
 }
@@ -432,34 +597,34 @@ body {
    it: a send on the right is answered on the left, and a repayment the other
    way about. It is taken out of the flow so it can never widen either half. */
 .entry-after {
-  position: absolute;
-  top: 2px;
-  max-width: calc(100% - 12px);
+  align-self: center;
+  min-width: 0;
+  padding: 0 2px;
   font-size: 12px;
   font-weight: 600;
-  white-space: nowrap;
 }
 
-.entry[data-side='right'] .entry-after {
-  right: calc(100% + 12px);
-  text-align: right;
-}
-
+/* A send on the left is answered on the right, and a payment the other way. */
 .entry[data-side='left'] .entry-after {
-  left: calc(100% + 12px);
+  grid-column: 3;
   text-align: left;
 }
 
+.entry[data-side='right'] .entry-after {
+  grid-column: 1;
+  text-align: right;
+}
+
 .entry-after[data-after-holder='abbaas'] {
-  color: var(--abbaas);
+  color: var(--abbaas-deep);
 }
 
 .entry-after[data-after-holder='you'] {
-  color: var(--you);
+  color: var(--you-deep);
 }
 
 .entry-after[data-after-holder='none'] {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 /* --- The blue full-screen send form. --- */
@@ -565,32 +730,129 @@ body {
 
 /* --- The rate and the dollar value it works out: MVR only (value 4). --- */
 
-/* Empty while the currency is USD, so a USD form carries neither the rate
-   label nor a data-usd element. */
-.rate-slot:empty {
-  display: none;
+/* One row of two equal cards, opened only for MVR: the rate on the left and the
+   white dollars card on the right. Closed it has no height AND nothing in it is
+   readable, so a USD form offers neither the rate label nor the worked-out
+   value; it opens by growing, which is what makes the row read as arriving
+   rather than as having always been there. */
+.rate-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  /* Not merely clipped: a clipped field would still be reachable and read. */
+  visibility: hidden;
+  transition:
+    max-height 380ms var(--curve),
+    opacity 380ms var(--curve);
 }
 
+.rate-row[data-open='true'] {
+  margin-top: 16px;
+  max-height: 160px;
+  opacity: 1;
+  visibility: visible;
+}
+
+/* The two cards share the row equally, whatever either one holds. */
+.rate-card,
 .worked-card {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.14);
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  /* The label sits close over its figure, so the two cards read as one row: the
+     rate being typed and the dollars it works out lie on the same line. */
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 16px;
+}
+
+.rate-card {
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.rate-label,
+.worked-label {
+  line-height: 1.1;
+}
+
+/* Both figures are drawn on the same tight line, so the typed rate and the
+   dollars it works out sit at the same height across the row. */
+.rate-input,
+.worked-value {
+  line-height: 1;
+}
+
+.rate-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rate-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--title-font);
+  font-size: 24px;
+  font-weight: 800;
+  padding: 0;
+}
+
+.rate-input:focus {
+  outline: none;
+}
+
+/* White, which is what sets the worked-out dollars apart from the blue form:
+   this is the figure that reaches the balance.
+
+   It carries the rate card's border width as a transparent one, so both cards
+   inset their contents by exactly the same amount: that is what makes the two
+   cards read as ONE row, with the typed rate and the dollars it works out on
+   the same line, rather than half a border out of step. */
+.worked-card {
+  border: 1.5px solid transparent;
+  background: #ffffff;
 }
 
 .worked-label {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.78);
+  font-weight: 600;
+  color: #3d5f8a;
 }
 
 .worked-value {
+  /* An output is inline by default, and an inline box cannot be scaled: the
+     pop below needs a box of its own to grow from. */
+  display: inline-block;
   font-family: var(--title-font);
   font-size: 24px;
   font-weight: 800;
+  color: var(--you-deep);
+}
+
+/* The figure pops as it changes. Only transform moves, so no frame of it can
+   force the page to lay itself out again; reduced motion runs no animation. */
+.worked-value[data-pop] {
+  animation: worked-pop 160ms var(--curve);
+}
+
+@keyframes worked-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .paid-to {
@@ -646,43 +908,8 @@ body {
   color: #ffe0e0;
 }
 
-.preview {
-  margin-top: 24px;
-}
-
-.preview-boxes {
-  display: flex;
-  gap: 12px;
-}
-
-.preview-box {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 10px;
-  border-radius: 18px;
-  border: 2px dashed rgba(255, 255, 255, 0.4);
-}
-
-.preview-box[data-state='filled'] {
-  background: rgba(255, 255, 255, 0.16);
-  border-style: solid;
-  border-color: transparent;
-}
-
-.preview-pill {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.preview-amount {
-  font-family: var(--title-font);
-  font-size: 22px;
-  font-weight: 800;
-}
+/* The refined board shows no after-saving preview on either form, so no preview
+   shapes are declared at all. */
 
 .save-button {
   margin-top: 26px;
@@ -704,76 +931,572 @@ body {
   cursor: default;
 }
 
-/* --- The teal full-screen receive form (value 5). ---
+/* --- Refined board value 2: the send form as drawn on the refined board. ---
 
-   It borrows every field, preview and save shape from the send form and changes
-   only the colour the owner reads it on: teal is the side the money comes from,
-   as Abbaas's box and the Receive button already are. */
+   Everything below is scoped to .send-form, so the receive form keeps the
+   shapes value 5 gave it until its own value redraws it. */
 
+/* Words only a screen reader reads, where the board draws its own instead. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A full-height column: the save button is pushed to the foot of it by the
+   margin below, and clears whatever gesture bar the device claims. The form
+   carries no fixed bottom bar, so it needs none of .screen's room for one. */
+.send-form {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+.send-form .form-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.send-form .form-close {
+  flex: 0 0 auto;
+  width: var(--touch);
+  height: var(--touch);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.send-form .form-standing {
+  text-align: right;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.send-form .standing-amount {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.send-form .form-header {
+  margin-top: 18px;
+}
+
+.send-form .form-eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--title-font);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.send-form h1 {
+  margin: 0;
+  font-size: 27px;
+  line-height: 1.15;
+}
+
+/* --- The currency switch: two halves with a white pill sliding between them.
+       The pill is the only thing that moves, and it moves on the one curve
+       every motion in the app travels on. --- */
+
+.send-form .currency-switch {
+  position: relative;
+  display: flex;
+  gap: 0;
+  margin-top: 20px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.send-form .currency-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 12px;
+  background: #ffffff;
+  transition: transform 300ms var(--curve);
+}
+
+.send-form .currency-switch[data-chosen='MVR'] .currency-pill {
+  transform: translateX(100%);
+}
+
+.send-form .currency-button {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  height: var(--touch);
+  min-height: var(--touch);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--title-font);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* The pressed half reads in the form's own deep blue, over the white pill. */
+.send-form .currency-button[aria-pressed='true'] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--you-deep);
+}
+
+/* --- The amount: the board's large field on a single underline. --- */
+
+.send-form .amount-field {
+  margin-top: 24px;
+}
+
+.send-form .amount-field label {
+  margin-bottom: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.send-form .amount-field .field-row {
+  align-items: baseline;
+  border-bottom-color: rgba(255, 255, 255, 0.55);
+  padding-bottom: 8px;
+}
+
+.send-form .field-prefix {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.send-form .field-prefix[data-prefix-currency='USD'] {
+  font-size: 32px;
+}
+
+.send-form .field-prefix[data-prefix-currency='MVR'] {
+  font-size: 20px;
+}
+
+.send-form .amount-input {
+  font-family: var(--title-font);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  padding: 0;
+}
+
+/* --- What USD needs no rate for. Empty in MVR, where a rate IS asked for, so
+       the claim cannot be read where it would be false. --- */
+
+.send-form .usd-note-slot:empty {
+  display: none;
+}
+
+.send-form .usd-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.send-form .usd-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+/* --- Paid to: a wrapping row of thumb-sized chips, the chosen one white. --- */
+
+.send-form .paid-to {
+  margin-top: 26px;
+}
+
+.send-form .group-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.send-form .chip,
+.send-form .new-person-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--touch);
+  min-height: var(--touch);
+  padding: 0 16px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-family: var(--body-font);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.send-form .chip[aria-pressed='true'] {
+  background: #ffffff;
+  color: var(--you-deep);
+  border-color: transparent;
+}
+
+/* The tick is held at no width until its chip is the chosen one, so it slides
+   in from nothing instead of appearing and shoving the name sideways. */
+.send-form .chip-tick {
+  display: inline-flex;
+  align-items: center;
+  width: 0;
+  overflow: hidden;
+  transition: width 220ms var(--curve);
+}
+
+.send-form .chip[aria-pressed='true'] .chip-tick {
+  width: 16px;
+}
+
+/* Dashed, because it makes a chip rather than being one. */
+.send-form .new-person-button {
+  background: transparent;
+  border: 1.5px dashed rgba(255, 255, 255, 0.6);
+}
+
+/* --- The date chip, with the device's own picker lying over the whole of it. --- */
+
+.send-form .date-group {
+  margin-top: 26px;
+}
+
+.send-form .date-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.send-form .date-words {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* The input covers the chip edge to edge and shows nothing of itself, so a tap
+   anywhere on the chip opens the picker while the chip's own words are what is
+   read. */
+.send-form .date-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* --- The save button, at the foot of the column. --- */
+
+.send-form .form-foot {
+  /* Whatever room is left over goes above the button, which is what holds it at
+     the bottom of a short form and below a long one. */
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.send-form .save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 0;
+  height: var(--button-height);
+  border-radius: 20px;
+  color: var(--you-deep);
+  font-weight: 800;
+}
+
+/* Nothing to send yet, or nobody to send it to: the button says so by fading
+   rather than by going away, so its figure can still be read. */
+.send-form .save-button:disabled {
+  background: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: default;
+}
+
+/* --- Refined board value 4: the teal full-screen receive form. ---
+
+   The same frame, laid out the same way, as the refined send form: it borrows
+   every shape and changes only the colour the owner reads it on, because teal is
+   the side the money comes from, as Abbaas's box and the Receive button already
+   are. The refined board drops the quick amounts, the note field, the
+   after-saving preview and the over-payment note, so no shape is declared for
+   any of them here. */
+
+/* A full-height column: the save button is pushed to the foot of it, clear of
+   whatever gesture bar the device claims. The form carries no fixed bottom bar,
+   so it needs none of .screen's room for one. */
 .receive-form {
   position: relative;
   min-height: 100dvh;
   background: var(--abbaas);
   color: #ffffff;
-}
-
-.receive-form h1 {
-  margin: 8px 0 4px;
-  font-family: var(--title-font);
-  font-size: 22px;
-  font-weight: 800;
-}
-
-/* The chosen currency and the save button invert to the form's own teal. */
-.receive-form .currency-button[aria-pressed='true'] {
-  color: var(--abbaas);
-}
-
-.receive-form .save-button {
-  color: var(--abbaas);
-}
-
-.receive-form .save-button:disabled {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* --- The quick amounts: one row of taps that fill the amount. --- */
-
-.quick-amounts {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
+  flex-direction: column;
+  padding: 16px 20px 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
 }
 
-.quick-button {
-  min-height: 44px;
-  padding: 10px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 999px;
-  background: transparent;
+.receive-form .form-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.receive-form .form-close {
+  flex: 0 0 auto;
+  width: var(--touch);
+  height: var(--touch);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
-  font-family: var(--body-font);
-  font-size: 14px;
   cursor: pointer;
 }
 
-/* --- The note before saving. ---
-
-   Empty whenever the payment leaves money with him, so there is no
-   data-receive-note element to read at all. */
-
-.receive-note-slot:empty {
-  display: none;
+.receive-form .form-standing {
+  margin: 0;
+  text-align: right;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.85);
 }
 
-.receive-note {
-  margin: 16px 0 0;
-  padding: 12px 14px;
+.receive-form .standing-amount {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.receive-form .form-header {
+  margin-top: 18px;
+}
+
+.receive-form .form-eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--title-font);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.receive-form h1 {
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 27px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+/* --- The currency switch: two halves with a white pill sliding between them.
+       The pill is the only thing that moves, and it moves on the one curve
+       every motion in the app travels on. --- */
+
+.receive-form .currency-switch {
+  position: relative;
+  display: flex;
+  gap: 0;
+  margin-top: 20px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.receive-form .currency-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 12px;
+  background: #ffffff;
+  transition: transform 300ms var(--curve);
+}
+
+.receive-form .currency-switch[data-chosen='MVR'] .currency-pill {
+  transform: translateX(100%);
+}
+
+.receive-form .currency-button {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  height: var(--touch);
+  min-height: var(--touch);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--title-font);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* The pressed half reads in the form's own deep teal, over the white pill. */
+.receive-form .currency-button[aria-pressed='true'] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--abbaas-deep);
+}
+
+/* --- The amount: the board's large field on a single underline. --- */
+
+.receive-form .amount-field {
+  margin-top: 24px;
+}
+
+.receive-form .amount-field label {
+  margin-bottom: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.receive-form .amount-field .field-row {
+  align-items: baseline;
+  border-bottom-color: rgba(255, 255, 255, 0.55);
+  padding-bottom: 8px;
+}
+
+.receive-form .field-prefix {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.receive-form .field-prefix[data-prefix-currency='USD'] {
+  font-size: 32px;
+}
+
+.receive-form .field-prefix[data-prefix-currency='MVR'] {
+  font-size: 20px;
+}
+
+.receive-form .amount-input {
+  font-family: var(--title-font);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  padding: 0;
+}
+
+/* --- The rate row: the same two cards as the send form, in this form's inks.
+       The row's own shape, and the fact that a closed row is unreadable, are
+       declared once above for both forms. --- */
+
+.receive-form .worked-label {
+  color: #235f59;
+}
+
+.receive-form .worked-value {
+  color: var(--abbaas-deep);
+}
+
+/* --- The date chip, with the device's own picker lying over the whole of it. --- */
+
+.receive-form .date-group {
+  margin-top: 26px;
+}
+
+.receive-form .date-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 16px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.16);
-  font-size: 14px;
-  line-height: 1.45;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.receive-form .date-words {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* The input covers the chip edge to edge and shows nothing of itself, so a tap
+   anywhere on the chip opens the picker while the chip's own words are what is
+   read. */
+.receive-form .date-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* --- The save button, at the foot of the column. --- */
+
+.receive-form .form-foot {
+  /* Whatever room is left over goes above the button, which is what holds it at
+     the bottom of a short form and below a long one. */
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.receive-form .save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 0;
+  height: var(--button-height);
+  border-radius: 20px;
+  background: #ffffff;
+  color: var(--abbaas-deep);
+  font-weight: 800;
+}
+
+/* Nothing to receive yet, or rufiyaa with no rate beside them: the button says
+   so by fading rather than by going away, so its figure can still be read. */
+.receive-form .save-button:disabled {
+  background: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: default;
 }
 
 /* --- Value 9: the motion of opening, saving and a balance that changes. ---
@@ -792,14 +1515,96 @@ body {
    the curve it travels are declared here, once, with every other entrance.
 
    The transition hangs on the travelling phase alone. The entry carries
-   data-motion="enter" from the moment it is first held back, 380 ms before it
-   moves, so that it never sits displaced without declaring itself; were the
+   data-motion="enter" from the moment it is first held back - the whole of the
+   520 ms the circle takes to fill the screen, because only once Home is whole
+   does the entry travel - so that it never sits displaced without declaring
+   itself; were the
    transition live during that hold, the entry would animate INTO its start
    state - fading out and sliding away - instead of simply being put there. */
 .entry[data-motion='enter'][data-enter='travel'] {
   transition:
     transform var(--enter-ms) var(--curve),
     opacity var(--enter-ms) var(--curve);
+}
+
+/* --- Home growing from the save button of the form it was saved from. ---
+
+   While it grows, Home lies over the whole viewport above the form it was saved
+   from, which is still mounted under its dim layer: that is what the circle
+   uncovers. It keeps the reading column's width, so the boxes and the bottom
+   buttons are exactly where they will be when it rests. Its clip-path circle is
+   stepped in motion.ts; at the end data-motion goes and Home is an ordinary
+   screen in the flow again, with nothing clipped and nothing fixed. */
+.screen[data-motion='grow'] {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(100vw, var(--column));
+  margin-left: calc(min(100vw, var(--column)) / -2);
+  /* Above the form and its dim layer, below nothing. */
+  z-index: 6;
+  overflow-y: auto;
+  background: var(--page);
+}
+
+/* The form dims where it stands the moment its save goes through, so the Home
+   growing above it is read as arriving over something still there. It takes no
+   taps: the form has been left, whatever is still under the circle. */
+.form-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(13, 31, 28, 0.3);
+  opacity: 0;
+  transition: opacity 320ms var(--curve);
+}
+
+.form-dim[data-dim='on'] {
+  opacity: 1;
+}
+
+/* The white save button reads as pressed for 120 ms after the save: a 16 % dark
+   overlay drawn inside the button, which moves nothing and lays nothing out. */
+.save-button[data-pressed] {
+  box-shadow: inset 0 0 0 999px rgba(13, 31, 28, 0.16);
+}
+
+/* The card that has just been saved wears a 2 px ring in its own kind's colour,
+   and keeps it until the next screen. It is an outline rather than a border, so
+   the ring is drawn around the card without moving anything inside it. */
+.entry[data-side='left'] .entry-card.entry-card-new {
+  outline: 2px solid var(--you);
+}
+
+.entry[data-side='right'] .entry-card.entry-card-new {
+  outline: 2px solid var(--abbaas);
+}
+
+/* A day the new entry is the first of opens its own space, so the older days
+   move down rather than jump. The two heights are set by motion.ts; the time
+   and the curve are declared here with every other motion. */
+.day-group[data-opening] {
+  overflow: hidden;
+  transition: max-height var(--enter-ms) var(--curve);
+}
+
+/* The Saved message is the last thing the save says: it is held fully
+   transparent and 18 px low for as long as anything on Home is still moving,
+   and then rises into place. A message with no data-rise at all - which is what
+   reduced motion leaves, and what an Undo's failure keeps - is simply there. */
+.saved-message[data-rise='held'] {
+  opacity: 0;
+  transform: translate(-50%, 18px);
+}
+
+.saved-message[data-rise='shown'] {
+  opacity: 1;
+  transform: translateX(-50%);
+  transition:
+    opacity 280ms var(--curve),
+    transform 280ms var(--curve);
 }
 
 /* The reveal circle and the counting amounts are stepped frame by frame in
@@ -810,6 +1615,96 @@ body {
    form that is not revealing carries no clip-path at all. */
 .screen {
   clip-path: none;
+}
+
+/* --- Refined board value 7: the entrances. ---
+
+   Opening the app plays Home's own entrance, and opening a form ripples the
+   tapped button and rises the form's rows in. Every part is put in its start
+   state by motion.ts and let go after its own delay; how long each kind of part
+   travels for, and the curve it travels on, are declared here with every other
+   motion in the app.
+
+   Nothing hangs on the held phase, which is what makes a held part simply be
+   where it comes from rather than animate into it: every rule below names the
+   travelling phase alone. */
+
+/* The boxes rise and fade in; the fade is the shorter of the two, so each box is
+   fully readable before it has quite finished settling. */
+[data-enter-rise='box'][data-enter-phase='travel'] {
+  transition:
+    transform 460ms var(--curve),
+    opacity 320ms var(--curve);
+}
+
+/* The centre line only draws down: its height is the whole of its journey. */
+[data-enter-rise='spine'][data-enter-phase='travel'] {
+  transition: transform 640ms var(--curve);
+}
+
+/* Each card arrives from its own side of the line. */
+[data-enter-rise='card'][data-enter-phase='travel'] {
+  transition:
+    transform 420ms var(--curve),
+    opacity 320ms var(--curve);
+}
+
+/* The totals and the Entries heading stay where they are and simply arrive. */
+[data-enter-rise='fade'][data-enter-phase='travel'] {
+  transition: opacity 320ms var(--curve);
+}
+
+/* The bottom buttons rise together, after the boxes have started. */
+[data-enter-rise='action'][data-enter-phase='travel'] {
+  transition:
+    transform 420ms var(--curve),
+    opacity 420ms var(--curve);
+}
+
+/* A form's rows, one after another down the form. */
+[data-enter-rise='row'][data-enter-phase='travel'] {
+  transition:
+    transform 280ms var(--curve),
+    opacity 280ms var(--curve);
+}
+
+/* The part that is moving is the one that says so, so it is the one that claims
+   the compositor. */
+[data-enter-rise] {
+  will-change: transform, opacity;
+}
+
+/* Home itself is not moved by its entrance - its parts are - so its root must
+   claim nothing: a will-change of transform there would make the bottom bar, the
+   fade and the Saved message, all fixed to the viewport, position themselves
+   against Home instead. */
+.screen[data-motion='home-enter'] {
+  will-change: auto;
+}
+
+/* The white ripple at the button a form was opened by: a 120 px circle placed at
+   that point, growing past it as it fades. It is fixed to the viewport because
+   the screen the button belongs to is replaced the moment the form opens, it
+   takes no taps, and it is out of the document again as soon as it has faded. */
+.tap-ripple {
+  position: fixed;
+  z-index: 8;
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  transform: scale(0.2);
+  opacity: 1;
+  will-change: transform, opacity;
+}
+
+.tap-ripple[data-ripple='out'] {
+  transform: scale(1.4);
+  opacity: 0;
+  transition:
+    transform 360ms var(--curve),
+    opacity 360ms var(--curve);
 }
 
 /* A device that has asked for less motion gets none. motion.ts already refuses

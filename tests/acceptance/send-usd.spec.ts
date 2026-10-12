@@ -15,14 +15,22 @@ import {
   type Account,
 } from '../support/accounts.js'
 
-// Value 3: recording a USD send to a saved or a new person.
+// Refined board value 2: the send form as on the refined board, in USD.
 //
 // Judged through the declared public port only: the built bundle's DOM (the Send
 // button, the blue form's labelled fields and contract attributes, Home's centre
 // line and balance boxes) and, outside the browser, the rows the app stored.
+//
+// This replaces version one's send oracle: the save button is now 'Send · $X',
+// the form carries no note field and no after-saving preview, and a send lands
+// LEFT of the centre line.
 
 const PASSWORD_FIELD = 'input[type="password"]'
-const VIEWPORT = { width: 360, height: 780 } as const
+// The refined board is drawn at 390 by 844; the shared config's phone is version
+// one's. Only this oracle's pages are resized, so the support stays untouched.
+const VIEWPORT = { width: 390, height: 844 } as const
+
+test.use({ viewport: VIEWPORT })
 
 const SEND_ACCOUNT = {
   email: 'owner-send-usd@abbaas.test',
@@ -60,13 +68,27 @@ const signIn = async (page: Page): Promise<void> => {
   await expect(page.locator(PASSWORD_FIELD)).toHaveCount(0)
 }
 
-/** Today in the device's own time zone, as the Date field must show it. */
-const deviceToday = (page: Page): Promise<string> =>
-  page.evaluate(() => {
-    const now = new Date()
+/** A day in the device's own time zone, as the Date input must carry it. */
+const deviceDate = (page: Page, dayOffset: number): Promise<string> =>
+  page.evaluate((offset) => {
+    const day = new Date()
+    day.setDate(day.getDate() + offset)
     const pad = (value: number): string => String(value).padStart(2, '0')
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-  })
+    return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`
+  }, dayOffset)
+
+/**
+ * The date chip's words for a day that is not today, in the fixed en-GB shape
+ * 'Sat, 10 Oct': short weekday, day of the month, short month.
+ */
+const chipWordsFor = (page: Page, isoDate: string): Promise<string> =>
+  page.evaluate((iso) => {
+    const parts = iso.split('-').map(Number)
+    const day = new Date(parts[0]!, parts[1]! - 1, parts[2]!)
+    const weekday = day.toLocaleDateString('en-GB', { weekday: 'short' })
+    const month = day.toLocaleDateString('en-GB', { month: 'short' })
+    return `${weekday}, ${day.getDate()} ${month}`
+  }, isoDate)
 
 const openSendForm = async (page: Page): Promise<Locator> => {
   await page.locator('[data-action="send"]').click()
@@ -75,8 +97,16 @@ const openSendForm = async (page: Page): Promise<Locator> => {
   return form
 }
 
-const saveButton = (page: Page): Locator =>
-  page.getByRole('button', { name: /^Save entry/ })
+/** The board's white save button: its name carries the USD value. */
+const sendButton = (page: Page, dollars: string): Locator =>
+  page.getByRole('button', { name: `Send · ${dollars}`, exact: true })
+
+/** A card lies wholly on one half of the list, judged on the centre line. */
+const expectWhollyLeft = async (card: Locator): Promise<void> => {
+  const rect = await card.boundingBox()
+  if (!rect) throw new Error('An entry card has no layout box')
+  expect(rect.x + rect.width).toBeLessThanOrEqual(VIEWPORT.width / 2)
+}
 
 /**
  * Home animates a newly saved entry and its counting boxes, so a position or a
@@ -100,54 +130,93 @@ const expectBox = async (
   await expect(box).toHaveAttribute('data-amount', cents)
 }
 
-test('a USD send to a saved person and to a new one lands right of the centre line and fills Abbaas\'s box', async ({
+test('the refined blue send form records a USD send to a saved and to a new person, left of the centre line', async ({
   page,
 }) => {
   await signIn(page)
   await expect(page.locator('[data-entry]')).toHaveCount(0)
 
-  // ----- The form opens on the blue send screen with USD already chosen. -----
+  // ----- The form opens on the board's blue screen with USD already chosen. -----
   const form = await openSendForm(page)
-  await expect(form).toContainText('Money sent for Abbaas')
-  await expect(page.getByRole('button', { name: 'USD', exact: true })).toHaveAttribute(
+  await expect(form).toContainText('New entry · Send')
+  await expect(
+    form.getByRole('heading', { name: 'Money sent for Abbaas', level: 1 }),
+  ).toBeVisible()
+  await expect(form.getByRole('button', { name: 'Close' })).toBeVisible()
+  // The top line states the balance: nothing is recorded yet.
+  await expect(form).toContainText('All square')
+
+  const usd = page.getByRole('button', { name: 'USD', exact: true })
+  await expect(usd).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'MVR', exact: true })).toHaveAttribute(
     'aria-pressed',
-    'true',
+    'false',
   )
 
-  const today = await deviceToday(page)
+  // The white pill sits under the pressed half of the switch.
+  const pill = form.locator('[data-pill]')
+  await expect(pill).toHaveCount(1)
+  const pillRect = await pill.boundingBox()
+  const usdRect = await usd.boundingBox()
+  if (!pillRect || !usdRect) throw new Error('The currency switch has no layout box')
+  const pillCentre = pillRect.x + pillRect.width / 2
+  expect(pillCentre).toBeGreaterThanOrEqual(usdRect.x)
+  expect(pillCentre).toBeLessThanOrEqual(usdRect.x + usdRect.width)
+
+  // ----- The amount is the board's large field, prefixed with a dollar sign. -----
+  await expect(form.locator('[data-prefix]')).toHaveText('$')
+  const amount = page.getByLabel('Amount sent')
+  await expect(amount).toHaveAttribute('inputmode', 'decimal')
+  expect(
+    await amount.evaluate((node) => window.getComputedStyle(node).fontSize),
+  ).toBe('44px')
+
+  // In USD no rate is asked for, and the form says so.
+  await expect(form).toContainText('Dollars go straight onto the balance. No rate needed.')
+
+  // ----- What the refined board removed is absent. -----
+  await expect(page.getByLabel('Note')).toHaveCount(0)
+  await expect(form.locator('[data-preview-box]')).toHaveCount(0)
+  await expect(form).not.toContainText('After saving')
+  await expect(page.getByRole('button', { name: /Save entry/ })).toHaveCount(0)
+
+  // ----- The date chip starts on today and carries the device's day. -----
+  const today = await deviceDate(page, 0)
   const dateField = page.getByLabel('Date')
   await expect(dateField).toHaveAttribute('type', 'date')
   await expect(dateField).toHaveValue(today)
+  // The chip over the input reads today in words, e.g. 'Today, 12 Oct'.
+  await expect(form.getByText(/^Today, \d{1,2} [A-Za-z]{3}$/).first()).toBeVisible()
 
   // ----- Nothing can be saved before an amount and a person exist. -----
-  await expect(saveButton(page)).toBeDisabled()
+  await expect(sendButton(page, '$0.00')).toBeDisabled()
 
-  const amount = page.getByLabel('Amount sent')
-  await expect(amount).toHaveAttribute('inputmode', 'decimal')
   await amount.fill('250.00')
 
-  // The after-saving preview follows the typed amount, before any person is chosen.
-  const abbaasPreview = page.locator('[data-preview-box="abbaas"]')
-  await expect(abbaasPreview).toHaveAttribute('data-state', 'filled')
-  await expect(abbaasPreview).toHaveAttribute('data-amount', '25000')
-  await expect(page.locator('[data-preview-box="you"]')).toHaveAttribute('data-state', 'empty')
-
-  // An amount alone is still not savable: a send must name who was paid.
-  await expect(saveButton(page)).toBeDisabled()
+  // The button's name follows the typed dollars, but an amount alone is not
+  // savable: a send must name who was paid.
+  const save = sendButton(page, '$250.00')
+  await expect(save).toBeDisabled()
 
   const savedChip = page.locator(`[data-person-chip="${savedPersonId}"]`)
-  await expect(savedChip).toHaveText(SAVED_PERSON)
+  await expect(savedChip).toContainText(SAVED_PERSON)
+  await expect(savedChip).toHaveAttribute('aria-pressed', 'false')
   await savedChip.click()
   await expect(savedChip).toHaveAttribute('aria-pressed', 'true')
 
-  await page.getByLabel('Note').fill('School fees')
+  // The chosen chip turns white with blue ink and shows its tick.
+  expect(
+    await savedChip.evaluate((node) => window.getComputedStyle(node).backgroundColor),
+  ).toBe('rgb(255, 255, 255)')
+  expect(await savedChip.evaluate((node) => window.getComputedStyle(node).color)).toBe(
+    'rgb(27, 63, 110)',
+  )
+  await expect(savedChip.locator('svg').first()).toBeVisible()
 
-  const save = saveButton(page)
   await expect(save).toBeEnabled()
-  await expect(save).toHaveAccessibleName(/\$250\.00/)
   await save.click()
 
-  // ----- Home: the entry sits wholly in the right half of the centre line. -----
+  // ----- Home: the card sits wholly in the LEFT half of the centre line. -----
   await expect(page.locator('[data-form="send"]')).toHaveCount(0)
   const entries = page.locator('[data-entry]')
   await expect(entries).toHaveCount(1)
@@ -157,9 +226,7 @@ test('a USD send to a saved person and to a new one lands right of the centre li
   await expect(first).toContainText('$250.00')
   await expect(first).toContainText(SAVED_PERSON)
   await expect(first.locator('[data-person]')).toHaveCount(1)
-  const firstRect = await first.boundingBox()
-  if (!firstRect) throw new Error('The saved entry has no layout box')
-  expect(firstRect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
+  await expectWhollyLeft(first)
 
   // ----- The balance is unsigned, in Abbaas's box, captioned for him. -----
   await expectBox(page, 'abbaas', 'filled', '25000')
@@ -169,8 +236,11 @@ test('a USD send to a saved person and to a new one lands right of the centre li
   await expect(abbaasBox).toContainText('has your money')
   expect(await abbaasBox.innerText()).not.toMatch(/[+−-]\s*\$250\.00/)
 
-  // ----- A second send, this time to a person typed for the first time. -----
-  await openSendForm(page)
+  // ----- A second send, to a person typed for the first time, dated yesterday. -----
+  const secondForm = await openSendForm(page)
+  // The top line now states what Abbaas holds.
+  await expect(secondForm).toContainText('Abbaas has $250.00 of yours')
+
   await page.getByRole('button', { name: 'New person', exact: true }).click()
   await page.getByLabel('Name').fill(NEW_PERSON)
   await page.getByRole('button', { name: 'Add', exact: true }).click()
@@ -181,7 +251,16 @@ test('a USD send to a saved person and to a new one lands right of the centre li
   await expect(newChip).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByLabel('Amount sent').fill('100')
-  const secondSave = saveButton(page)
+
+  // The chip's words follow the date input, so the picker is readable at a glance.
+  const yesterday = await deviceDate(page, -1)
+  await page.getByLabel('Date').fill(yesterday)
+  await expect(page.getByLabel('Date')).toHaveValue(yesterday)
+  const yesterdayWords = await chipWordsFor(page, yesterday)
+  await expect(secondForm.getByText(yesterdayWords, { exact: true }).first()).toBeVisible()
+  await expect(secondForm.getByText(/^Today, /)).toHaveCount(0)
+
+  const secondSave = sendButton(page, '$100.00')
   await expect(secondSave).toBeEnabled()
   await secondSave.click()
 
@@ -189,9 +268,7 @@ test('a USD send to a saved person and to a new one lands right of the centre li
   await expect(entries).toHaveCount(2)
   await settled(page)
   for (let index = 0; index < 2; index += 1) {
-    const rect = await entries.nth(index).boundingBox()
-    if (!rect) throw new Error('An entry has no layout box')
-    expect(rect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
+    await expectWhollyLeft(entries.nth(index))
   }
   await expectBox(page, 'abbaas', 'filled', '35000')
   await expect(abbaasBox).toContainText('$350.00')
@@ -208,8 +285,8 @@ test('a USD send to a saved person and to a new one lands right of the centre li
   await openSendForm(page)
   const chips = page.locator('[data-person-chip]')
   await expect(chips).toHaveCount(2)
-  await expect(chips.nth(0)).toHaveText(NEW_PERSON)
-  await expect(chips.nth(1)).toHaveText(SAVED_PERSON)
+  await expect(chips.nth(0)).toContainText(NEW_PERSON)
+  await expect(chips.nth(1)).toContainText(SAVED_PERSON)
 
   // ----- What was stored, read outside the browser. -----
   expect([...(await readPeopleNames(stack, account))]).toEqual([NEW_PERSON, SAVED_PERSON])
@@ -228,15 +305,19 @@ test('a USD send to a saved person and to a new one lands right of the centre li
 
   expect(toSaved.usd_cents).toBe(25000)
   expect(toNew.usd_cents).toBe(10000)
-  expect(toSaved.note).toBe('School fees')
+
+  // The date each form carried is the date each row keeps.
+  expect(toSaved.entry_date).toBe(today)
+  expect(toNew.entry_date).toBe(yesterday)
 
   for (const entry of [toSaved, toNew]) {
     expect(entry.kind).toBe('send')
     expect(entry.currency).toBe('USD')
     expect(entry.rate).toBeNull()
+    // The refined form has no note field, so nothing can be stored in one.
+    expect(entry.note).toBeNull()
     // For a USD send the minor unit IS the cent, so the two must agree.
     expect(entry.amount_minor).toBe(entry.usd_cents)
-    expect(entry.entry_date).toBe(today)
     expect(entry.person_id).not.toBeNull()
   }
   expect(toSaved.person_id).toBe(savedPersonId)

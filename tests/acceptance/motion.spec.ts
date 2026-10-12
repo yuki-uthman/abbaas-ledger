@@ -9,62 +9,79 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, seedUsdSend, type Account } from '../support/accounts.js'
 
-// Value 9: motion on open, save and balance change.
+// Refined board value 6: the save motion. Home grows as a circle from the form's
+// white save button, then only the new entry arrives from its own side, the balance
+// counts, and the Saved message rises last.
 //
 // Judged through the declared public port only: the built bundle's DOM OVER TIME,
 // with and without prefers-reduced-motion. The observable contract is the one the
 // design fixed: while a motion runs its element carries data-motion with the value
-// reveal, enter, count or swap, and the attribute is removed when it ends; the
-// reveal's clip-path circle is centred on the tapped button; a counting box already
-// carries the final data-amount while its text is still between the two values.
-//
-// The contract covers the whole of a motion, including the frames in which an element
-// is being held in its start state before it visibly moves: an entry that is shifted
-// or transparent is mid-motion and must say so on itself, so that a reader which waits
-// for no data-motion to remain and then measures sees the resting state and nothing
-// else. The recorder therefore samples each entry's computed transform and opacity,
-// which are the only properties the design lets the entrance use, alongside the
-// attributes.
+// grow (the Home mounted above the form), enter (the new entry), count or swap (the
+// boxes), and the attribute is removed when that motion ends. Home is located as the
+// element carrying data-motion="grow"; no new attribute is needed and none is used.
 //
 // A single transient state cannot be caught by a round-trip assertion, so the frames
 // are recorded inside the page with requestAnimationFrame and judged afterwards. The
-// recorder reads nothing but the public attributes, text and computed clip-path.
+// recorder reads nothing but the public attributes, text, and the computed clip-path,
+// transform, opacity and ring of the elements the contract names.
+//
+// Not judged here: the save button's 16 % pressed overlay and the dim layer over the
+// form carry no public marker in the design, so this oracle asserts only that the
+// form is still mounted under the growing Home, which is what makes the dim layer and
+// the press visible at all.
 
 const PASSWORD_FIELD = 'input[type="password"]'
-const VIEWPORT = { width: 360, height: 780 } as const
-const HALF = VIEWPORT.width / 2
+const VIEWPORT = { width: 390, height: 844 } as const
 
-// Each test drives the same two saves, so each needs its own account starting from
-// the same seeded balance: sharing one account would leave the second test looking at
-// the first test's end state. The emails differ only by the test they belong to.
-const FULL_MOTION_ACCOUNT = {
-  email: 'owner-motion-full@abbaas.test',
-  password: 'motion-password-9',
+// Each test drives its own save from the same seeded balance, so each needs its own
+// account: sharing one would leave a later test looking at an earlier one's end state.
+const SEND_ACCOUNT = {
+  email: 'owner-save-motion-send@abbaas.test',
+  password: 'save-motion-password-6',
 } as const
-const REDUCED_MOTION_ACCOUNT = {
-  email: 'owner-motion-reduced@abbaas.test',
-  password: 'motion-password-9',
+const RECEIVE_ACCOUNT = {
+  email: 'owner-save-motion-receive@abbaas.test',
+  password: 'save-motion-password-6',
+} as const
+const REDUCED_ACCOUNT = {
+  email: 'owner-save-motion-reduced@abbaas.test',
+  password: 'save-motion-password-6',
 } as const
 
-// Abbaas starts out holding $740.00 of the owner's money. A $500 send takes the
-// balance to $1,240.00 on his side; a $2,000 repayment then moves it to the owner's
-// side, leaving $760.00 of his.
+// Abbaas starts out holding $400.00 of the owner's money, on a past day, so every
+// save in these tests opens a new day group for today.
 const SEEDED_PERSON = 'Mariyam Nisha'
-const SEEDED_SEND_CENTS = 74000
+const SEEDED_SEND_CENTS = 40000
 const SEEDED_SEND_DATE = '2026-10-05'
-const SENT_AMOUNT = '500'
-const RECEIVED_AMOUNT = '2000'
-const AFTER_SEND_CENTS = 124000
-const AFTER_RECEIVE_CENTS = 76000
-const AFTER_SEND_TEXT = '$1,240.00'
-const AFTER_RECEIVE_TEXT = '$760.00'
+const SEEDED_TEXT = '$400.00'
 
-// The design fixes every motion at 520 ms or less except the balance count (700 ms,
-// 900 ms for a swap), the entry entrance starting about 380 ms after Home appears,
-// and nothing running longer than 1.5 s from its start. A recording window of 2.5 s
-// covers the whole of the longest motion plus the save's round trip to the stack.
-const WINDOW_MS = 2_500
-const LONGEST_MOTION_MS = 1_500
+// A $100.00 send leaves $500.00 on his side.
+const SENT_AMOUNT = '100'
+const SENT_TEXT = '$100.00'
+const SEND_BUTTON_NAME = 'Send · $100.00'
+const AFTER_SEND_CENTS = 50000
+const AFTER_SEND_TEXT = '$500.00'
+
+// A $600.00 payment is more than he holds: his box drains to $0 while the owner's
+// fills with the $200.00 difference.
+const RECEIVED_AMOUNT = '600'
+const RECEIVED_TEXT = '$600.00'
+const RECEIVE_BUTTON_NAME = 'Receive · $600.00'
+const AFTER_RECEIVE_CENTS = 20000
+const AFTER_RECEIVE_TEXT = '$200.00'
+
+// The ring the design puts on the new card, in its kind's colour.
+const SEND_COLOUR = 'rgb(36, 80, 138)'
+const RECEIVE_COLOUR = 'rgb(15, 111, 104)'
+const RING_WIDTH_PX = 2
+
+// The grow runs 520 ms and the form leaves the DOM at its end, so the whole of it is
+// over well inside 900 ms of the tap. The Saved message is the last thing to appear
+// and the design allows it up to 2.5 s from the start of the save motion. The window
+// covers that plus the save's round trip to the local stack.
+const WINDOW_MS = 3_500
+const GROW_LIMIT_MS = 900
+const SAVED_MESSAGE_LIMIT_MS = 2_500
 
 let stack: Stack
 let served: ServedOrigin
@@ -108,29 +125,40 @@ type Sample = {
   readonly amount: string | null
   readonly state: string | null
   readonly text: string
+  /** The text of the half-size cents span inside the box, or null when absent. */
+  readonly cents: string | null
+}
+
+type EntrySample = {
+  readonly motion: string | null
+  readonly text: string
+  readonly transform: string
+  readonly opacity: number
+  /** The card's ring: its border when it has one, else its outline. */
+  readonly ringWidth: number
+  readonly ringColour: string
 }
 
 type Frame = {
   readonly t: number
   /** Every data-motion value present anywhere in the document at this frame. */
   readonly motions: readonly string[]
-  readonly form:
+  /** The data-form values mounted at this frame; empty once the form has left. */
+  readonly formKinds: readonly string[]
+  /** The element carrying data-motion="grow": Home, mounted above the form. */
+  readonly grow:
     | {
-        readonly kind: string | null
-        readonly motion: string | null
         readonly clipPath: string
         readonly left: number
         readonly top: number
       }
     | null
+  /** How many elements anywhere in the document have a circle() clip-path. */
+  readonly circleClipped: number
   readonly you: Sample | null
   readonly abbaas: Sample | null
-  readonly entries: readonly {
-    readonly motion: string | null
-    readonly text: string
-    readonly transform: string
-    readonly opacity: number
-  }[]
+  readonly entries: readonly EntrySample[]
+  readonly saved: { readonly opacity: number } | null
 }
 
 declare global {
@@ -149,44 +177,59 @@ const installRecorder = async (page: Page): Promise<void> => {
         const sample = (selector: string): unknown => {
           const element = document.querySelector(selector)
           if (!element) return null
+          const cents = element.querySelector('[data-cents]')
           return {
             motion: element.getAttribute('data-motion'),
             amount: element.getAttribute('data-amount'),
             state: element.getAttribute('data-state'),
             text: clean(element.textContent),
+            cents: cents ? clean(cents.textContent) : null,
           }
         }
         const tick = (): void => {
           const t = performance.now() - started
-          const form = document.querySelector('[data-form]')
-          const formRect = form ? form.getBoundingClientRect() : null
+          const grow = document.querySelector('[data-motion="grow"]')
+          const growRect = grow ? grow.getBoundingClientRect() : null
+          const saved = document.querySelector('[data-saved-message]')
           frames.push({
             t,
             motions: Array.from(
               document.querySelectorAll('[data-motion]'),
               (element) => element.getAttribute('data-motion') ?? '',
             ),
-            form:
-              form && formRect
+            formKinds: Array.from(
+              document.querySelectorAll('[data-form]'),
+              (element) => element.getAttribute('data-form') ?? '',
+            ),
+            grow:
+              grow && growRect
                 ? {
-                    kind: form.getAttribute('data-form'),
-                    motion: form.getAttribute('data-motion'),
-                    clipPath: getComputedStyle(form).clipPath,
-                    left: formRect.left,
-                    top: formRect.top,
+                    clipPath: getComputedStyle(grow).clipPath,
+                    left: growRect.left,
+                    top: growRect.top,
                   }
                 : null,
+            circleClipped: Array.from(document.querySelectorAll('*')).filter((element) =>
+              getComputedStyle(element).clipPath.includes('circle('),
+            ).length,
             you: sample('[data-box="you"]'),
             abbaas: sample('[data-box="abbaas"]'),
             entries: Array.from(document.querySelectorAll('[data-entry]'), (element) => {
               const style = getComputedStyle(element)
+              // A ring is a border when the card has one and an outline otherwise;
+              // the design fixes its width and colour, not which property draws it.
+              const borderWidth = Number.parseFloat(style.borderTopWidth) || 0
               return {
                 motion: element.getAttribute('data-motion'),
                 text: clean(element.textContent),
                 transform: style.transform,
                 opacity: Number(style.opacity),
+                ringWidth:
+                  borderWidth > 0 ? borderWidth : Number.parseFloat(style.outlineWidth) || 0,
+                ringColour: borderWidth > 0 ? style.borderTopColor : style.outlineColor,
               }
             }),
+            saved: saved ? { opacity: Number(getComputedStyle(saved).opacity) } : null,
           })
           if (t < durationMs) requestAnimationFrame(tick)
           else resolve(frames as Frame[])
@@ -215,26 +258,48 @@ const centsOf = (text: string): number | null => {
   return dollars * 100 + cents
 }
 
-/** The centre of a clip-path circle, in viewport pixels. */
+/** The centre of the growing Home's clip-path circle, in viewport pixels. */
 const circleCentre = (
-  form: NonNullable<Frame['form']>,
+  grow: NonNullable<Frame['grow']>,
 ): { readonly x: number; readonly y: number } | null => {
-  const found = /circle\([^)]*?\s+at\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s*\)/.exec(form.clipPath)
+  const found = /circle\([^)]*?\s+at\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s*\)/.exec(grow.clipPath)
   if (!found) return null
-  // The circle is placed in the form's own reference box; the viewport point is that
-  // box's origin plus the offset, which is the same thing for a full-screen form.
-  return { x: form.left + Number(found[1]), y: form.top + Number(found[2]) }
+  // The circle is placed in Home's own reference box; the viewport point is that box's
+  // origin plus the offset, which is the same thing for a full-screen Home.
+  return { x: grow.left + Number(found[1]), y: grow.top + Number(found[2]) }
+}
+
+/** The x translation a computed transform applies, or null when it is unreadable. */
+const translationX = (transform: string): number | null => {
+  if (transform === 'none') return 0
+  const flat = /^matrix\(([^)]+)\)$/.exec(transform)
+  if (flat) return Number(flat[1]!.split(',')[4])
+  const three = /^matrix3d\(([^)]+)\)$/.exec(transform)
+  if (three) return Number(three[1]!.split(',')[12])
+  return null
 }
 
 const framesWith = (frames: readonly Frame[], motion: string): readonly Frame[] =>
   frames.filter((frame) => frame.motions.includes(motion))
 
-/** Every motion of this kind finished within 1.5 s of its start. */
-const expectWithinBudget = (frames: readonly Frame[], motion: string): void => {
-  const running = framesWith(frames, motion)
-  expect(running.length, `no frame ever carried data-motion="${motion}"`).toBeGreaterThan(0)
-  const span = running[running.length - 1]!.t - running[0]!.t
-  expect(span, `data-motion="${motion}" ran for ${span} ms`).toBeLessThanOrEqual(LONGEST_MOTION_MS)
+/** The first frame at which an entry whose text holds `amount` is mid-entrance. */
+const firstEntering = (frames: readonly Frame[], amount: string): EntrySample => {
+  for (const frame of frames) {
+    const entry = frame.entries.find(
+      (candidate) => candidate.text.includes(amount) && candidate.motion === 'enter',
+    )
+    if (entry) return entry
+  }
+  throw new Error(`no frame showed the ${amount} entry carrying data-motion="enter"`)
+}
+
+/** The resting ring of the entry whose text holds `amount`, at the last frame. */
+const restingEntry = (frames: readonly Frame[], amount: string): EntrySample => {
+  for (let index = frames.length - 1; index >= 0; index -= 1) {
+    const entry = frames[index]!.entries.find((candidate) => candidate.text.includes(amount))
+    if (entry) return entry
+  }
+  throw new Error(`no frame showed an entry containing ${amount}`)
 }
 
 const signIn = async (page: Page, account: Account): Promise<void> => {
@@ -244,318 +309,348 @@ const signIn = async (page: Page, account: Account): Promise<void> => {
   await page.getByLabel('Password').fill(account.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator(PASSWORD_FIELD)).toHaveCount(0)
-  await expect(page.locator('[data-box="abbaas"]')).toContainText('$740.00')
+  await expect(page.locator('[data-box="abbaas"]')).toContainText(SEEDED_TEXT)
+}
+
+/** A phone-sized context on the refined board's viewport, optionally reduced-motion. */
+const openPhone = async (
+  browser: Browser,
+  options?: { readonly reduce: boolean },
+): Promise<{ readonly page: Page; readonly close: () => Promise<void> }> => {
+  const context = await browser.newContext({
+    viewport: VIEWPORT,
+    ...(options?.reduce ? { reducedMotion: 'reduce' as const } : {}),
+  })
+  const page = await context.newPage()
+  await installRecorder(page)
+  return { page, close: () => context.close() }
+}
+
+/**
+ * Taps the save button while the page records every frame, after noting where that
+ * button was: the grow must start from exactly that centre.
+ */
+const saveAndRecord = async (
+  page: Page,
+  buttonName: string,
+): Promise<{ readonly frames: readonly Frame[]; readonly centre: { x: number; y: number } }> => {
+  const button = page.getByRole('button', { name: buttonName })
+  await expect(button).toBeEnabled()
+  const rect = await button.boundingBox()
+  if (!rect) throw new Error(`The ${buttonName} button has no layout box`)
+  const centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  const recording = startRecording(page)
+  await button.click()
+  return { frames: await recording, centre }
+}
+
+/**
+ * The grow: Home mounted above the still-present form, clipped to a circle centred on
+ * the save button, and both the clip and the form gone within 900 ms of the tap.
+ */
+const expectGrowFromButton = (
+  frames: readonly Frame[],
+  centre: { readonly x: number; readonly y: number },
+  formKind: string,
+): void => {
+  const growing = frames.filter((frame) => frame.grow !== null)
+  expect(growing.length, 'no frame carried data-motion="grow" on Home after the save').toBeGreaterThan(0)
+
+  // The form is still mounted under the growing Home, which is what the dim layer and
+  // the pressed button are seen through.
+  expect(
+    growing[0]!.formKinds,
+    'the form had already left the DOM when Home began to grow',
+  ).toContain(formKind)
+
+  const centres = growing.map((frame) => circleCentre(frame.grow!))
+  expect(
+    centres.filter((found) => found !== null).length,
+    'no grow frame showed a clip-path circle on Home',
+  ).toBeGreaterThan(0)
+  for (const found of centres) {
+    if (!found) continue
+    expect(Math.abs(found.x - centre.x), `grow centre x was ${found.x}, the button's ${centre.x}`).toBeLessThanOrEqual(4)
+    expect(Math.abs(found.y - centre.y), `grow centre y was ${found.y}, the button's ${centre.y}`).toBeLessThanOrEqual(4)
+  }
+
+  // Within 900 ms of the tap the grow is over: Home carries no data-motion="grow",
+  // nothing is clipped to a circle any more, and the form has left the DOM.
+  const settled = frames.filter(
+    (frame) =>
+      frame.t <= GROW_LIMIT_MS &&
+      frame.grow === null &&
+      frame.circleClipped === 0 &&
+      frame.formKinds.length === 0,
+  )
+  expect(
+    settled.length,
+    `the form, the grow or its clip-path was still there ${GROW_LIMIT_MS} ms after the tap`,
+  ).toBeGreaterThan(0)
+}
+
+/**
+ * The Saved message rises last: it is absent or fully transparent for as long as the
+ * entry or the balance is still moving, and visible by the end of the motion.
+ */
+const expectSavedMessageLast = (frames: readonly Frame[]): void => {
+  const stillMoving = frames.filter((frame) =>
+    frame.motions.some((motion) => ['grow', 'enter', 'count', 'swap'].includes(motion)),
+  )
+  expect(stillMoving.length, 'no frame of the save motion carried data-motion').toBeGreaterThan(0)
+  expect(
+    stillMoving
+      .filter((frame) => frame.saved !== null && frame.saved.opacity > 0)
+      .map((frame) => ({ t: frame.t, motions: frame.motions, opacity: frame.saved!.opacity })),
+    'the Saved message was already showing while the entry or the balance was still moving',
+  ).toEqual([])
+
+  const started = stillMoving[0]!.t
+  const shown = frames.filter(
+    (frame) => frame.saved !== null && frame.saved.opacity > 0 && frame.t - started <= SAVED_MESSAGE_LIMIT_MS,
+  )
+  expect(
+    shown.length,
+    `the Saved message was not showing within ${SAVED_MESSAGE_LIMIT_MS} ms of the save motion starting`,
+  ).toBeGreaterThan(0)
 }
 
 // ===========================================================================
 // Without reduced motion: every motion is observable while it runs and gone after.
 // ===========================================================================
 
-test('forms grow from the tapped button, the saved entry arrives from its side, and the balance counts and swaps', async ({
-  page,
-}) => {
-  const account = await freshSeededAccount(FULL_MOTION_ACCOUNT)
-  await installRecorder(page)
-  await signIn(page, account)
-
-  const abbaasBox = page.locator('[data-box="abbaas"]')
-  const youBox = page.locator('[data-box="you"]')
-  const sendButton = page.locator('[data-action="send"]')
-  const receiveButton = page.locator('[data-action="receive"]')
-
-  // ----- The Send button's centre: where its reveal must start from. -----
-  const sendRect = await sendButton.boundingBox()
-  if (!sendRect) throw new Error('The Send button has no layout box')
-  const sendCentre = { x: sendRect.x + sendRect.width / 2, y: sendRect.y + sendRect.height / 2 }
-  expect(sendCentre.x).toBeLessThan(HALF)
-
-  // ===== Opening Send: a circle reveal from that button. =====
-  let recording = startRecording(page)
-  await sendButton.click()
-  let frames = await recording
-
-  const sendReveal = framesWith(frames, 'reveal')
-  expect(sendReveal.length, 'the send form never carried data-motion="reveal"').toBeGreaterThan(0)
-  for (const frame of sendReveal) {
-    expect(frame.form?.kind).toBe('send')
-    expect(frame.form?.motion).toBe('reveal')
-  }
-  // A circle, centred on the tapped button, in the left half of the viewport.
-  const sendCentres = sendReveal.map((frame) => circleCentre(frame.form!)).filter((c) => c !== null)
-  expect(sendCentres.length, `no reveal frame showed a clip-path circle`).toBeGreaterThan(0)
-  for (const centre of sendCentres) {
-    expect(centre!.x).toBeLessThan(HALF)
-    expect(centre!.x).toBeGreaterThanOrEqual(sendRect.x)
-    expect(centre!.x).toBeLessThanOrEqual(sendRect.x + sendRect.width)
-    expect(centre!.y).toBeGreaterThanOrEqual(sendRect.y)
-    expect(centre!.y).toBeLessThanOrEqual(sendRect.y + sendRect.height)
-  }
-  expectWithinBudget(frames, 'reveal')
-
-  // After the window the reveal is over: no data-motion and no clip-path at all.
-  const sendForm = page.locator('[data-form="send"]')
-  await expect(sendForm).toBeVisible()
-  await expect(sendForm).not.toHaveAttribute('data-motion', /.*/)
-  expect(
-    await sendForm.evaluate((element) => getComputedStyle(element).clipPath),
-  ).toBe('none')
-
-  // ===== Saving the send: the entry enters from its side, the box counts. =====
-  await page.getByLabel('Amount sent').fill(SENT_AMOUNT)
-  await page.getByRole('button', { name: SEEDED_PERSON }).click()
-
-  recording = startRecording(page)
-  await page.getByRole('button', { name: /^Save entry/ }).click()
-  frames = await recording
-
-  // The new entry carries data-motion="enter" while it arrives.
-  const enterFrames = frames.filter((frame) =>
-    frame.entries.some((entry) => entry.text.includes('$500.00') && entry.motion === 'enter'),
-  )
-  expect(
-    enterFrames.length,
-    'the new entry never carried data-motion="enter" on returning to Home',
-  ).toBeGreaterThan(0)
-  expectWithinBudget(frames, 'enter')
-
-  // The entrance is self-declaring for the whole of its run, including the wait before
-  // it visibly moves. From the first frame of Home after the save until the entry
-  // rests, any frame in which the new entry is displaced or transparent has that entry
-  // carrying data-motion="enter"; so a reader that waits for no element to carry
-  // data-motion and then measures can only ever read the resting entry.
-  const homeFrames = frames.filter((frame) => frame.entries.length === 2)
-  expect(homeFrames.length, 'Home never showed the two entries after the save').toBeGreaterThan(0)
-  const newEntryFrames = homeFrames.map((frame) => ({
-    t: frame.t,
-    motions: frame.motions,
-    entry: frame.entries.find((entry) => entry.text.includes('$500.00')) ?? null,
-  }))
-  expect(
-    newEntryFrames.filter((frame) => frame.entry === null).map((frame) => frame.t),
-    'the new entry was missing from a frame of Home that showed two entries',
-  ).toEqual([])
-
-  const moving = (entry: NonNullable<(typeof newEntryFrames)[number]['entry']>): boolean =>
-    entry.transform !== 'none' || entry.opacity < 1
-
-  const undeclared = newEntryFrames.filter(
-    (frame) => moving(frame.entry!) && frame.entry!.motion !== 'enter',
-  )
-  expect(
-    undeclared.map((frame) => ({
-      t: frame.t,
-      motion: frame.entry!.motion,
-      transform: frame.entry!.transform,
-      opacity: frame.entry!.opacity,
-    })),
-    'the new entry was displaced or transparent without carrying data-motion="enter"',
-  ).toEqual([])
-
-  // The same rule read from the other end: with no data-motion anywhere, it rests.
-  const stillFrames = newEntryFrames.filter((frame) => frame.motions.length === 0)
-  expect(
-    stillFrames.length,
-    'no frame of Home after the save was free of data-motion',
-  ).toBeGreaterThan(0)
-  expect(
-    stillFrames
-      .filter((frame) => moving(frame.entry!))
-      .map((frame) => ({
-        t: frame.t,
-        transform: frame.entry!.transform,
-        opacity: frame.entry!.opacity,
-      })),
-    'the new entry was still displaced or transparent after every data-motion was gone',
-  ).toEqual([])
-
-  // The holder's box counts: the final data-amount is already set while the shown
-  // amount is still between the balance before the save and the balance after it.
-  const countFrames = frames.filter((frame) => frame.abbaas?.motion === 'count')
-  expect(countFrames.length, 'the abbaas box never carried data-motion="count"').toBeGreaterThan(0)
-  for (const frame of countFrames) {
-    expect(frame.abbaas!.amount).toBe(String(AFTER_SEND_CENTS))
-    const shown = centsOf(frame.abbaas!.text)
-    expect(shown, `a counting box showed no amount: ${frame.abbaas!.text}`).not.toBeNull()
-    expect(shown!).toBeGreaterThanOrEqual(SEEDED_SEND_CENTS)
-    expect(shown!).toBeLessThanOrEqual(AFTER_SEND_CENTS)
-  }
-  // It is a count and not a jump: some frame showed neither end value as its text.
-  expect(
-    countFrames.some((frame) => !frame.abbaas!.text.includes(AFTER_SEND_TEXT)),
-    'the balance jumped straight to its final text instead of counting',
-  ).toBe(true)
-  expectWithinBudget(frames, 'count')
-
-  // After the window every motion is finished and the end state is shown.
-  await expect(abbaasBox).not.toHaveAttribute('data-motion', /.*/)
-  await expect(abbaasBox).toHaveAttribute('data-amount', String(AFTER_SEND_CENTS))
-  await expect(abbaasBox).toContainText(AFTER_SEND_TEXT)
-  await expect(page.locator('[data-entry]')).toHaveCount(2)
-  await expect(page.locator('[data-motion]')).toHaveCount(0)
-
-  // ===== Opening Receive: the same reveal, from the other side. =====
-  const receiveRect = await receiveButton.boundingBox()
-  if (!receiveRect) throw new Error('The Receive button has no layout box')
-  expect(receiveRect.x + receiveRect.width / 2).toBeGreaterThan(HALF)
-
-  recording = startRecording(page)
-  await receiveButton.click()
-  frames = await recording
-
-  const receiveReveal = framesWith(frames, 'reveal')
-  expect(receiveReveal.length, 'the receive form never carried data-motion="reveal"').toBeGreaterThan(0)
-  for (const frame of receiveReveal) {
-    expect(frame.form?.kind).toBe('receive')
-  }
-  const receiveCentres = receiveReveal
-    .map((frame) => circleCentre(frame.form!))
-    .filter((c) => c !== null)
-  expect(receiveCentres.length, 'no reveal frame showed a clip-path circle').toBeGreaterThan(0)
-  for (const centre of receiveCentres) {
-    expect(centre!.x).toBeGreaterThan(HALF)
-    expect(centre!.x).toBeGreaterThanOrEqual(receiveRect.x)
-    expect(centre!.x).toBeLessThanOrEqual(receiveRect.x + receiveRect.width)
-    expect(centre!.y).toBeGreaterThanOrEqual(receiveRect.y)
-    expect(centre!.y).toBeLessThanOrEqual(receiveRect.y + receiveRect.height)
-  }
-  expectWithinBudget(frames, 'reveal')
-
-  // ===== A repayment larger than he holds: his box drains while the owner's fills. =====
-  await page.getByLabel('Amount received').fill(RECEIVED_AMOUNT)
-
-  recording = startRecording(page)
-  await page.getByRole('button', { name: /^Save entry/ }).click()
-  frames = await recording
-
-  const swapFrames = frames.filter(
-    (frame) => frame.abbaas?.motion === 'swap' && frame.you?.motion === 'swap',
-  )
-  expect(swapFrames.length, 'the two boxes never carried data-motion="swap" together').toBeGreaterThan(0)
-  for (const frame of swapFrames) {
-    // The end values are already on the attributes while the shown amounts move.
-    expect(frame.abbaas!.amount).toBe('0')
-    expect(frame.you!.amount).toBe(String(AFTER_RECEIVE_CENTS))
-    const drained = centsOf(frame.abbaas!.text)
-    const filled = centsOf(frame.you!.text)
-    expect(drained, `the draining box showed no amount: ${frame.abbaas!.text}`).not.toBeNull()
-    expect(filled, `the filling box showed no amount: ${frame.you!.text}`).not.toBeNull()
-    expect(drained!).toBeGreaterThanOrEqual(0)
-    expect(drained!).toBeLessThanOrEqual(AFTER_SEND_CENTS)
-    expect(filled!).toBeGreaterThanOrEqual(0)
-    expect(filled!).toBeLessThanOrEqual(AFTER_RECEIVE_CENTS)
-  }
-  expectWithinBudget(frames, 'swap')
-
-  // After the window the balance has landed on the owner's side.
-  await expect(page.locator('[data-motion]')).toHaveCount(0)
-  await expect(youBox).toHaveAttribute('data-state', 'filled')
-  await expect(youBox).toHaveAttribute('data-amount', String(AFTER_RECEIVE_CENTS))
-  await expect(youBox).toContainText(AFTER_RECEIVE_TEXT)
-  await expect(abbaasBox).toHaveAttribute('data-state', 'empty')
-  await expect(abbaasBox).toHaveAttribute('data-amount', '0')
-  await expect(page.locator('[data-entry]')).toHaveCount(3)
-})
-
-// ===========================================================================
-// With prefers-reduced-motion: reduce, every screen shows its end state at once.
-// ===========================================================================
-
-test('with reduced motion nothing animates and every screen shows its end state at once', async ({
+test('saving a send presses the button, grows Home from it over the form, brings the card in from the left and counts the balance', async ({
   browser,
 }: {
   browser: Browser
 }) => {
-  const account = await freshSeededAccount(REDUCED_MOTION_ACCOUNT)
-  const context = await browser.newContext({ viewport: VIEWPORT, reducedMotion: 'reduce' })
-  const page = await context.newPage()
+  const account = await freshSeededAccount(SEND_ACCOUNT)
+  const phone = await openPhone(browser)
+  const page = phone.page
   try {
-    await installRecorder(page)
     await signIn(page, account)
-
     const abbaasBox = page.locator('[data-box="abbaas"]')
-    const youBox = page.locator('[data-box="you"]')
 
-    /** No frame of a recording may carry data-motion anywhere in the document. */
-    const expectNoMotion = (frames: readonly Frame[], moment: string): void => {
-      const moving = frames.filter((frame) => frame.motions.length > 0)
-      expect(
-        moving.map((frame) => frame.motions).flat(),
-        `data-motion was set with reduced motion while ${moment}`,
-      ).toEqual([])
-    }
-
-    // ===== Opening Send: shown whole, with no clip-path. =====
+    // ===== Opening Send still reveals the form as a circle from the tapped button. =====
     let recording = startRecording(page)
     await page.locator('[data-action="send"]').click()
-    let frames = await recording
-    expectNoMotion(frames, 'opening the send form')
-    // Right after opening, and at every frame, the form is unclipped.
-    const clipped = frames
-      .filter((frame) => frame.form !== null)
-      .filter((frame) => frame.form!.clipPath !== 'none')
     expect(
-      clipped.map((frame) => frame.form!.clipPath),
-      'the form was clipped with reduced motion',
-    ).toEqual([])
-    expect(
-      frames.some((frame) => frame.form?.kind === 'send'),
-      'the send form never appeared',
-    ).toBe(true)
+      framesWith(await recording, 'reveal').length,
+      'the send form never carried data-motion="reveal" on opening',
+    ).toBeGreaterThan(0)
 
-    // ===== Saving the send: the balance is already $1,240.00 when Home appears. =====
     await page.getByLabel('Amount sent').fill(SENT_AMOUNT)
     await page.getByRole('button', { name: SEEDED_PERSON }).click()
 
-    recording = startRecording(page)
-    await page.getByRole('button', { name: /^Save entry/ }).click()
-    frames = await recording
-    expectNoMotion(frames, 'saving the send')
-    // Every frame of Home after the save (two entries) already shows the end state:
-    // no frame shows the old balance or any value between the two.
-    const afterSend = frames.filter((frame) => frame.entries.length === 2)
-    expect(afterSend.length, 'Home never showed the two entries').toBeGreaterThan(0)
-    for (const frame of afterSend) {
-      expect(frame.abbaas!.amount).toBe(String(AFTER_SEND_CENTS))
-      expect(frame.abbaas!.text).toContain(AFTER_SEND_TEXT)
-    }
-    await expect(abbaasBox).toContainText(AFTER_SEND_TEXT)
+    // ===== The save: Home grows from the white button over the mounted form. =====
+    const { frames, centre } = await saveAndRecord(page, SEND_BUTTON_NAME)
+    expectGrowFromButton(frames, centre, 'send')
 
-    // ===== Opening Receive: again unclipped and unanimated. =====
-    recording = startRecording(page)
-    await page.locator('[data-action="receive"]').click()
-    frames = await recording
-    expectNoMotion(frames, 'opening the receive form')
+    // ===== Only the new entry moves, arriving from the left with its blue ring. =====
+    const entering = firstEntering(frames, SENT_TEXT)
+    const shift = translationX(entering.transform)
+    expect(shift, `the entering card's transform was unreadable: ${entering.transform}`).not.toBeNull()
     expect(
-      frames
-        .filter((frame) => frame.form !== null)
-        .filter((frame) => frame.form!.clipPath !== 'none')
-        .map((frame) => frame.form!.clipPath),
-      'the form was clipped with reduced motion',
-    ).toEqual([])
+      shift!,
+      'the new send card did not start translated toward its own side (the left)',
+    ).toBeLessThan(0)
+
+    // The older entry never moves: only the new card is marked and only it is shifted.
+    const movedOthers = frames.flatMap((frame) =>
+      frame.entries
+        .filter((entry) => !entry.text.includes(SENT_TEXT))
+        .filter((entry) => entry.motion !== null || translationX(entry.transform) !== 0)
+        .map((entry) => ({ t: frame.t, text: entry.text, transform: entry.transform, motion: entry.motion })),
+    )
+    expect(movedOthers, 'an entry other than the new one was marked or displaced').toEqual([])
+
+    const ringed = restingEntry(frames, SENT_TEXT)
+    expect(ringed.ringWidth, 'the new send card had no 2 px ring').toBeCloseTo(RING_WIDTH_PX, 1)
+    expect(ringed.ringColour, "the new send card's ring was not in its own colour").toBe(SEND_COLOUR)
+
+    // ===== The holder's box counts from $400.00 to $500.00, keeping its cents span. =====
+    const counting = frames.filter((frame) => frame.abbaas?.motion === 'count')
+    expect(counting.length, 'the abbaas box never carried data-motion="count"').toBeGreaterThan(0)
+    for (const frame of counting) {
+      const box = frame.abbaas!
+      expect(box.amount, 'a counting box did not already hold the final data-amount').toBe(
+        String(AFTER_SEND_CENTS),
+      )
+      const shown = centsOf(box.text)
+      expect(shown, `a counting box showed no amount: ${box.text}`).not.toBeNull()
+      expect(shown!).toBeGreaterThanOrEqual(SEEDED_SEND_CENTS)
+      expect(shown!).toBeLessThanOrEqual(AFTER_SEND_CENTS)
+      // Value 1's structure survives every frame of the count.
+      expect(box.cents, `a counting box lost its data-cents span: ${box.text}`).toMatch(/^\.\d{2}$/)
+    }
     expect(
-      frames.some((frame) => frame.form?.kind === 'receive'),
-      'the receive form never appeared',
+      counting.some((frame) => !frame.abbaas!.text.includes(AFTER_SEND_TEXT)),
+      'the balance jumped straight to its final text instead of counting',
     ).toBe(true)
 
-    // ===== The swap happens at once: $760.00 on the owner's side, his box empty. =====
+    // ===== The Saved message rises only once the entry and the count have landed. =====
+    expectSavedMessageLast(frames)
+
+    // ===== The end state. =====
+    await expect(page.locator('[data-motion]')).toHaveCount(0)
+    await expect(page.locator('[data-form]')).toHaveCount(0)
+    await expect(abbaasBox).toHaveAttribute('data-amount', String(AFTER_SEND_CENTS))
+    await expect(abbaasBox).toContainText(AFTER_SEND_TEXT)
+    await expect(abbaasBox.locator('[data-cents]')).toHaveText('.00')
+    await expect(page.locator('[data-entry]')).toHaveCount(2)
+    await expect(page.locator('[data-saved-message]')).toBeVisible()
+  } finally {
+    await phone.close()
+  }
+})
+
+// ===========================================================================
+// A payment larger than he holds: the card arrives from the right and the boxes swap.
+// ===========================================================================
+
+test('saving a payment larger than Abbaas holds brings the card in from the right and swaps the boxes', async ({
+  browser,
+}: {
+  browser: Browser
+}) => {
+  const account = await freshSeededAccount(RECEIVE_ACCOUNT)
+  const phone = await openPhone(browser)
+  const page = phone.page
+  try {
+    await signIn(page, account)
+    const abbaasBox = page.locator('[data-box="abbaas"]')
+    const youBox = page.locator('[data-box="you"]')
+
+    await page.locator('[data-action="receive"]').click()
     await page.getByLabel('Amount received').fill(RECEIVED_AMOUNT)
 
-    recording = startRecording(page)
-    await page.getByRole('button', { name: /^Save entry/ }).click()
-    frames = await recording
-    expectNoMotion(frames, 'saving the repayment')
-    const afterReceive = frames.filter((frame) => frame.entries.length === 3)
-    expect(afterReceive.length, 'Home never showed the three entries').toBeGreaterThan(0)
-    for (const frame of afterReceive) {
-      expect(frame.you!.amount).toBe(String(AFTER_RECEIVE_CENTS))
-      expect(frame.you!.text).toContain(AFTER_RECEIVE_TEXT)
+    const { frames, centre } = await saveAndRecord(page, RECEIVE_BUTTON_NAME)
+    expectGrowFromButton(frames, centre, 'receive')
+
+    // The payment card arrives from its own side: the right.
+    const entering = firstEntering(frames, RECEIVED_TEXT)
+    const shift = translationX(entering.transform)
+    expect(shift, `the entering card's transform was unreadable: ${entering.transform}`).not.toBeNull()
+    expect(
+      shift!,
+      'the new payment card did not start translated toward its own side (the right)',
+    ).toBeGreaterThan(0)
+
+    const ringed = restingEntry(frames, RECEIVED_TEXT)
+    expect(ringed.ringWidth, 'the new payment card had no 2 px ring').toBeCloseTo(RING_WIDTH_PX, 1)
+    expect(ringed.ringColour, "the new payment card's ring was not in its own colour").toBe(
+      RECEIVE_COLOUR,
+    )
+
+    // Both boxes say so while his drains and the owner's fills, and both already hold
+    // their end values on data-amount while the shown amounts are still moving.
+    const swapping = frames.filter(
+      (frame) => frame.abbaas?.motion === 'swap' && frame.you?.motion === 'swap',
+    )
+    expect(
+      swapping.length,
+      'the two boxes never carried data-motion="swap" together',
+    ).toBeGreaterThan(0)
+    for (const frame of swapping) {
       expect(frame.abbaas!.amount).toBe('0')
-      expect(frame.abbaas!.state).toBe('empty')
+      expect(frame.you!.amount).toBe(String(AFTER_RECEIVE_CENTS))
+      const drained = centsOf(frame.abbaas!.text)
+      const filled = centsOf(frame.you!.text)
+      expect(drained, `the draining box showed no amount: ${frame.abbaas!.text}`).not.toBeNull()
+      expect(filled, `the filling box showed no amount: ${frame.you!.text}`).not.toBeNull()
+      expect(drained!).toBeGreaterThanOrEqual(0)
+      expect(drained!).toBeLessThanOrEqual(SEEDED_SEND_CENTS)
+      expect(filled!).toBeGreaterThanOrEqual(0)
+      expect(filled!).toBeLessThanOrEqual(AFTER_RECEIVE_CENTS)
     }
+    expect(
+      swapping.some((frame) => !frame.abbaas!.text.includes('$0')),
+      'his box jumped straight to $0 instead of draining',
+    ).toBe(true)
+
+    expectSavedMessageLast(frames)
+
+    await expect(page.locator('[data-motion]')).toHaveCount(0)
+    await expect(page.locator('[data-form]')).toHaveCount(0)
     await expect(youBox).toHaveAttribute('data-state', 'filled')
+    await expect(youBox).toHaveAttribute('data-amount', String(AFTER_RECEIVE_CENTS))
     await expect(youBox).toContainText(AFTER_RECEIVE_TEXT)
     await expect(abbaasBox).toHaveAttribute('data-state', 'empty')
+    await expect(abbaasBox).toHaveAttribute('data-amount', '0')
+    await expect(page.locator('[data-entry]')).toHaveCount(2)
+    await expect(page.locator('[data-saved-message]')).toBeVisible()
   } finally {
-    await context.close()
+    await phone.close()
+  }
+})
+
+// ===========================================================================
+// With prefers-reduced-motion: reduce, the saved Home shows its end state at once.
+// ===========================================================================
+
+test('with reduced motion saving shows Home in its end state at once, with the Saved message already there', async ({
+  browser,
+}: {
+  browser: Browser
+}) => {
+  const account = await freshSeededAccount(REDUCED_ACCOUNT)
+  const phone = await openPhone(browser, { reduce: true })
+  const page = phone.page
+  try {
+    await signIn(page, account)
+    const abbaasBox = page.locator('[data-box="abbaas"]')
+
+    await page.locator('[data-action="send"]').click()
+    await page.getByLabel('Amount sent').fill(SENT_AMOUNT)
+    await page.getByRole('button', { name: SEEDED_PERSON }).click()
+
+    const { frames } = await saveAndRecord(page, SEND_BUTTON_NAME)
+
+    // Nothing animates: data-motion is never set and nothing is ever clipped.
+    expect(
+      frames.filter((frame) => frame.motions.length > 0).map((frame) => frame.motions).flat(),
+      'data-motion was set with reduced motion while saving',
+    ).toEqual([])
+    expect(
+      frames.filter((frame) => frame.circleClipped > 0).map((frame) => frame.t),
+      'an element was clipped to a circle with reduced motion',
+    ).toEqual([])
+
+    // The first frame Home is shown is already the end state: the form has gone, the
+    // balance is the one after the save, and the Saved message is visible at once.
+    const homeFrames = frames.filter(
+      (frame) => frame.formKinds.length === 0 && frame.entries.length === 2,
+    )
+    expect(homeFrames.length, 'Home never showed the two entries after the save').toBeGreaterThan(0)
+    const firstHome = homeFrames[0]!
+    expect(firstHome.abbaas!.amount).toBe(String(AFTER_SEND_CENTS))
+    expect(firstHome.abbaas!.text).toContain(AFTER_SEND_TEXT)
+    expect(firstHome.abbaas!.cents, 'the box lost its data-cents span').toBe('.00')
+    expect(
+      firstHome.saved,
+      'the Saved message was missing from the first frame of Home with reduced motion',
+    ).not.toBeNull()
+    expect(
+      firstHome.saved!.opacity,
+      'the Saved message was still fading in with reduced motion',
+    ).toBe(1)
+
+    // The new card rests from the first frame: nothing is displaced or transparent.
+    for (const frame of homeFrames) {
+      for (const entry of frame.entries) {
+        expect(
+          translationX(entry.transform),
+          `an entry was displaced with reduced motion: ${entry.transform}`,
+        ).toBe(0)
+        expect(entry.opacity, 'an entry was transparent with reduced motion').toBe(1)
+      }
+    }
+
+    await expect(page.locator('[data-motion]')).toHaveCount(0)
+    await expect(abbaasBox).toHaveAttribute('data-amount', String(AFTER_SEND_CENTS))
+    await expect(abbaasBox).toContainText(AFTER_SEND_TEXT)
+    await expect(page.locator('[data-saved-message]')).toBeVisible()
+  } finally {
+    await phone.close()
   }
 })
