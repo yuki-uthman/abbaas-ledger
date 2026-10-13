@@ -1771,3 +1771,245 @@ body {
   opacity: 0.55;
   cursor: default;
 }
+
+/* --- Delete value 1: the entry sheet, raised over the dimmed Home. ---
+
+   The canvas draws no delete, so the sheet is built out of the app's own tokens
+   and nothing else: the page colour, the ink, the muted grey, the hairline, the
+   two holder colours, Manrope for the title and the figure, Source Sans 3 for
+   the rest, and the one curve. Light theme only. */
+
+/* An entry card is the way into its sheet. It is NOT a button and does not read
+   as one: it keeps its own figures as its only text and gains only the look of
+   something that can be tapped, and a visible focus ring, because it is now a
+   tab stop. */
+.entry-card {
+  cursor: pointer;
+}
+
+.entry-card:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The dimmed Home: the whole viewport, under the sheet and over everything
+   Home fixes to its own foot - the bottom buttons and the fade - so a tap
+   anywhere but on the sheet lands here and closes it. */
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(13, 31, 28, 0.42);
+}
+
+/* The sheet itself: white, at the bottom of the same reading column the app
+   keeps, full width on a phone, with its top corners rounded and room below its
+   buttons for whatever gesture bar the device claims. */
+.entry-sheet {
+  position: fixed;
+  z-index: 11;
+  bottom: 0;
+  left: 50%;
+  width: min(100vw, var(--column));
+  margin-left: calc(min(100vw, var(--column)) / -2);
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 -8px 32px rgba(13, 31, 28, 0.18);
+  /* It rises from below, and falls back the same way (motion.ts). */
+  transform-origin: bottom center;
+}
+
+.entry-sheet .sheet-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+/* The dot repeats the entry's colour beside its name: blue for a send, teal for
+   a payment back. */
+.entry-sheet .sheet-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.entry-sheet[data-sheet-kind='send'] .sheet-dot {
+  background: var(--you);
+}
+
+.entry-sheet[data-sheet-kind='receive'] .sheet-dot {
+  background: var(--abbaas);
+}
+
+/* The dollar figure, large and in the entry's own colour, as Home reads it. */
+.entry-sheet .sheet-usd {
+  margin: 10px 0 0;
+  font-family: var(--title-font);
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.entry-sheet[data-sheet-kind='send'] .sheet-usd {
+  color: var(--you);
+}
+
+.entry-sheet[data-sheet-kind='receive'] .sheet-usd {
+  color: var(--abbaas);
+}
+
+/* The detail rows: a muted label at one end, the inked value at the other, each
+   separated from the next by a hairline. */
+.entry-sheet .sheet-rows {
+  margin-top: 18px;
+}
+
+.entry-sheet .sheet-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.entry-sheet .sheet-row-label {
+  flex: 0 0 auto;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.entry-sheet .sheet-row-value {
+  min-width: 0;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* The foot: whatever it is saying - nothing, the question, or the note that a
+   delete did not land - above the buttons it is offering. */
+.entry-sheet .sheet-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/* At rest, and after a Retry: the red one first and Close under it, each a
+   comfortable thumb's height. */
+.entry-sheet .sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* While the question is up the two answers sit side by side on equal halves,
+   Cancel on the left and the red Delete on the right. */
+.entry-sheet .sheet-actions[data-sheet-actions='confirm'] {
+  flex-direction: row;
+  gap: 10px;
+}
+
+.entry-sheet .sheet-actions[data-sheet-actions='confirm'] > button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* --- Delete value 2: the question the foot turns into. ---
+
+   It is the sheet's own foot rather than a browser dialog, so the entry's
+   details stay readable above it and the owner answers in the place they
+   tapped. */
+
+.entry-sheet .sheet-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.entry-sheet .sheet-ask-question {
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.entry-sheet .sheet-ask-hint {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+/* A delete that could not reach the server, said in the app's one soft red, the
+   same shape the sign-in message is read in. */
+.entry-sheet .sheet-note {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fbeceb;
+  color: #9a2a22;
+  font-size: 15px;
+}
+
+.entry-sheet .sheet-delete,
+.entry-sheet .sheet-cancel,
+.entry-sheet .sheet-close {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 20px;
+  font-family: var(--title-font);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.entry-sheet .sheet-delete {
+  background: #b3261e;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* Close, and Cancel in its place while the question is up, are plain: the page's
+   own colour, read in ink, so the red one is the only thing on the sheet that
+   looks like a decision. */
+.entry-sheet .sheet-close,
+.entry-sheet .sheet-cancel {
+  background: var(--page);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* While the removal is out neither answer can be given again, and both say so
+   by fading rather than by going away: the question stays readable. */
+.entry-sheet .sheet-delete:disabled,
+.entry-sheet .sheet-cancel:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* The sheet and its scrim travel as one motion, so both hang on the same phase.
+   Nothing hangs on the held phase, which is what lets each part simply be put
+   where it comes from instead of animating into it. */
+[data-motion='sheet-rise'][data-sheet-phase='travel'] {
+  transition:
+    transform 280ms var(--curve),
+    opacity 280ms var(--curve);
+}
+
+[data-motion='sheet-fall'][data-sheet-phase='travel'] {
+  transition:
+    transform 200ms var(--curve),
+    opacity 200ms var(--curve);
+}

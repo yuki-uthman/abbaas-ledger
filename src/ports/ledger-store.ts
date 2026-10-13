@@ -51,7 +51,12 @@ export type NewEntry = {
 export const LEDGER_UNREADABLE_MESSAGE = 'Could not load the ledger. Try again.'
 export const ENTRY_UNSAVABLE_MESSAGE = 'Could not save. Try again.'
 export const PERSON_UNSAVABLE_MESSAGE = 'Could not add this person. Try again.'
-export const ENTRY_UNREMOVABLE_MESSAGE = 'Could not undo. Try again.'
+/**
+ * What a removal that could not reach the store says. It is worded for the one
+ * place a removal is asked for: the entry sheet's Delete, which keeps the sheet
+ * open and the entry listed when it reads this.
+ */
+export const ENTRY_UNREMOVABLE_MESSAGE = 'Could not delete. Try again.'
 
 /**
  * Reading the ledger. A Retry is distinct from an empty list on purpose: an empty
@@ -81,10 +86,10 @@ export type AddEntryOutcome =
   | { readonly outcome: 'retry'; readonly message: string }
 
 /**
- * Taking one stored entry back, which is what Undo asks for. 'removed' is
- * claimed only when the row is really gone, so an Undo that could not reach the
- * store answers Retry and the entry stays listed rather than being hidden while
- * it is still held.
+ * Taking one stored entry back, which is what the sheet's Delete asks for.
+ * 'removed' is claimed only when the row is really gone, so a delete that could
+ * not reach the store answers Retry and the entry stays listed rather than being
+ * hidden while it is still held.
  */
 export type RemoveEntryOutcome =
   | { readonly outcome: 'removed' }

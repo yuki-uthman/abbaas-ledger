@@ -66,6 +66,14 @@
 // and no element here carries it. What a save says is the new card alone - its
 // 2 px ring in its own colour and its arrival from its own side - and the row it
 // saved stays stored.
+// Delete value 1 makes each entry card the way into that entry's sheet and
+// takes nothing from the contract above: the card keeps data-entry, keeps its
+// figures as its only accessible text and is NOT given role=button, so no
+// existing lookup of a button changes meaning. What it gains is reach - a tab
+// stop and aria-haspopup=dialog - while which hash a tap travels to stays the
+// composition root's business. Home itself still writes nothing and reads
+// nothing but the ledger it was handed, so a sheet opened over it cannot move
+// its count, its boxes or its totals.
 import { balanceOf, boxFor, type Balance } from '../domain/balance.js'
 import {
   deviceToday,
@@ -127,6 +135,14 @@ const renderEntry = (listed: ListedEntry<LedgerEntry>): HTMLElement => {
   body.className = 'entry-card'
   // The card is the entry: data-entry is on the tinted box the owner reads.
   body.dataset.entry = entry.id
+  // Delete value 1: the card opens this entry's sheet. It is deliberately NOT
+  // given role=button - the card is the entry and reads as its own figures, and
+  // naming it a button would change what every existing button lookup means -
+  // so it is made reachable instead: a tab stop that says a dialog follows. The
+  // listeners themselves belong to the composition root, which knows the hash a
+  // sheet is opened by.
+  body.tabIndex = 0
+  body.setAttribute('aria-haspopup', 'dialog')
 
   const amount = document.createElement('span')
   amount.className = 'entry-amount'

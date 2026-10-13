@@ -17,7 +17,9 @@
 //     'reveal' (a form root), 'grow' (Home, mounted above the form it was saved
 //     from), 'enter' (the new entry), 'count' (a box whose amount is counting),
 //     'swap' (both boxes while the holder changes), 'home-enter' (Home's root
-//     while the opening entrance runs) or 'row' (a form row rising in)
+//     while the opening entrance runs), 'row' (a form row rising in) or
+//     'sheet-rise'/'sheet-fall' (the entry sheet and its scrim, which travel
+//     together as one motion)
 //   - the attribute is removed the moment that motion ends
 //   - with prefers-reduced-motion: reduce nothing here runs at all, so
 //     data-motion is never set, nothing is ever clipped, and the screen the
@@ -690,6 +692,106 @@ export const enterRows = (rows: readonly HTMLElement[]): void => {
     })
     window.setTimeout(() => settleRise(row), restsAt + ENTER_SLACK_MS)
   })
+}
+
+// ---------------------------------------------------------------------------
+// Delete value 1: the entry sheet rising over Home and falling away again. It is
+// one motion of two parts - the sheet and the scrim travel together - so both
+// carry data-motion from before the first start state is applied until the last
+// of it rests or is gone, and neither is left with an inline style of its own.
+//
+// Nothing of Home moves: the sheet is raised over a Home that is already
+// mounted, and this touches only the two elements it is handed.
+// ---------------------------------------------------------------------------
+
+/** The sheet rises as it fades in; it falls back a little faster. */
+export const SHEET_RISE_MS = 280
+export const SHEET_FALL_MS = 200
+/** How far below where it rests the sheet comes from, and falls back to. */
+const SHEET_SHIFT_PX = 24
+
+/** Both parts of the sheet's one motion, in the order they are drawn. */
+const sheetParts = (sheet: HTMLElement, scrim: HTMLElement): readonly HTMLElement[] => [scrim, sheet]
+
+/**
+ * Puts the sheet and its scrim back exactly as they were painted: no inline
+ * transform, no inline opacity, no phase and no motion. What is left is the end
+ * state, which is the state they were built in all along.
+ */
+const settleSheet = (sheet: HTMLElement, scrim: HTMLElement): void => {
+  for (const part of sheetParts(sheet, scrim)) {
+    delete part.dataset.motion
+    delete part.dataset.sheetPhase
+    part.style.transform = ''
+    part.style.opacity = ''
+  }
+}
+
+/**
+ * Raises the sheet: it comes from 24 px below where it rests and fades in while
+ * the scrim fades in with it, over 280 ms on the one curve.
+ *
+ * The start state is applied while both parts are still held - a phase no
+ * transition hangs on - so each is simply put where it comes from instead of
+ * animating into it, and data-motion is set before anything is displaced, so
+ * neither part can sit shifted or transparent without saying that it is still
+ * arriving.
+ *
+ * With reduced motion asked for nothing runs and no attribute is set: the sheet
+ * the caller appended is already its own end state, so it is simply there.
+ */
+export const raiseSheet = (sheet: HTMLElement, scrim: HTMLElement): void => {
+  if (prefersReducedMotion()) return
+  for (const part of sheetParts(sheet, scrim)) {
+    part.dataset.motion = 'sheet-rise'
+    part.dataset.sheetPhase = 'held'
+    part.style.opacity = '0'
+  }
+  sheet.style.transform = `translateY(${SHEET_SHIFT_PX}px)`
+
+  requestAnimationFrame(() => {
+    // Reading the layout flushes the style, so the frame that starts the
+    // transition sees the shifted, invisible sheet as where it travels from.
+    void sheet.offsetHeight
+    for (const part of sheetParts(sheet, scrim)) {
+      part.dataset.sheetPhase = 'travel'
+      part.style.opacity = '1'
+    }
+    sheet.style.transform = 'none'
+    window.setTimeout(() => {
+      settleSheet(sheet, scrim)
+    }, SHEET_RISE_MS + ENTER_SLACK_MS)
+  })
+}
+
+/**
+ * Lowers the sheet: the reverse of the rise, over 200 ms, after which `settle`
+ * is what takes it and its scrim out of the DOM. data-motion is dropped in the
+ * same breath as the removal, so a reader that waits for nothing to be moving
+ * finds the sheet wholly gone rather than merely on its way out.
+ *
+ * With reduced motion asked for it disappears at once: `settle` runs on the
+ * spot and nothing is ever displaced.
+ */
+export const lowerSheet = (sheet: HTMLElement, scrim: HTMLElement, settle: () => void): void => {
+  if (prefersReducedMotion()) {
+    settle()
+    return
+  }
+  for (const part of sheetParts(sheet, scrim)) {
+    part.dataset.motion = 'sheet-fall'
+    // Straight to travelling: both parts are resting where they belong, which
+    // is where this journey starts from.
+    part.dataset.sheetPhase = 'travel'
+  }
+  void sheet.offsetHeight
+  for (const part of sheetParts(sheet, scrim)) part.style.opacity = '0'
+  sheet.style.transform = `translateY(${SHEET_SHIFT_PX}px)`
+
+  window.setTimeout(() => {
+    for (const part of sheetParts(sheet, scrim)) delete part.dataset.motion
+    settle()
+  }, SHEET_FALL_MS + ENTER_SLACK_MS)
 }
 
 /**
