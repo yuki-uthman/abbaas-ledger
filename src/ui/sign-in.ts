@@ -24,6 +24,7 @@ const labelledInput = (
   autocomplete: string,
 ): { readonly field: HTMLElement; readonly input: HTMLInputElement } => {
   const field = document.createElement('p')
+  field.className = 'sign-in-field'
   const element = document.createElement('label')
   element.htmlFor = id
   element.textContent = label
@@ -35,6 +36,7 @@ const labelledInput = (
   input.name = id
   input.setAttribute('autocomplete', autocomplete)
   input.required = true
+  input.className = 'sign-in-input'
   if (type === 'email') input.inputMode = 'email'
 
   field.append(element, input)
@@ -44,11 +46,24 @@ const labelledInput = (
 export const renderSignIn = (state: SignInState, handlers: SignInHandlers): HTMLElement => {
   const screen = document.createElement('section')
   screen.dataset.screen = 'sign-in'
+  screen.className = 'screen sign-in'
+
+  // The two holders' colours, overlapping: the app's mark, drawn and not loaded.
+  const mark = document.createElement('div')
+  mark.className = 'sign-in-mark'
+  mark.setAttribute('aria-hidden', 'true')
+  mark.append(document.createElement('span'), document.createElement('span'))
 
   const title = document.createElement('h1')
+  title.className = 'sign-in-title'
   title.textContent = 'Abbaas Ledger'
 
+  const lead = document.createElement('p')
+  lead.className = 'sign-in-lead'
+  lead.textContent = 'Sign in once on this phone. It stays signed in.'
+
   const form = document.createElement('form')
+  form.className = 'sign-in-card'
   form.noValidate = true
 
   const email = labelledInput('email', 'Email', 'email', state.email, 'username')
@@ -57,6 +72,7 @@ export const renderSignIn = (state: SignInState, handlers: SignInHandlers): HTML
 
   const submit = document.createElement('button')
   submit.type = 'submit'
+  submit.className = 'sign-in-button'
   submit.textContent = 'Sign in'
   submit.disabled = state.busy
 
@@ -66,8 +82,7 @@ export const renderSignIn = (state: SignInState, handlers: SignInHandlers): HTML
     handlers.onSignIn({ email: email.input.value.trim(), password: password.input.value })
   })
 
-  form.append(email.field, password.field, submit)
-  screen.append(title, form)
+  form.append(email.field, password.field)
 
   if (state.message !== null) {
     // Named failures are spoken, not guessed at: wrong credentials, an
@@ -75,9 +90,13 @@ export const renderSignIn = (state: SignInState, handlers: SignInHandlers): HTML
     const notice = document.createElement('p')
     notice.setAttribute('role', 'alert')
     notice.dataset.signInMessage = ''
+    notice.className = 'sign-in-message'
     notice.textContent = state.message
-    screen.append(notice)
+    form.append(notice)
   }
+
+  form.append(submit)
+  screen.append(mark, title, lead, form)
 
   return screen
 }

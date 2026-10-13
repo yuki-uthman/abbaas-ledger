@@ -1648,3 +1648,126 @@ body {
     animation: none !important;
   }
 }
+
+/* --- Sign-in: the app's page, a mark in the two holders' colours, and one
+       white card carrying the two fields and the dark ink button. --- */
+
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: calc(24px + env(safe-area-inset-top));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+.sign-in-mark {
+  position: relative;
+  width: 64px;
+  height: 44px;
+  margin: 0 auto 20px;
+}
+
+.sign-in-mark span {
+  position: absolute;
+  top: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.sign-in-mark span:first-child {
+  left: 0;
+  background: var(--you);
+}
+
+.sign-in-mark span:last-child {
+  right: 0;
+  background: var(--abbaas);
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+}
+
+.sign-in-title {
+  margin: 0;
+  text-align: center;
+  font-family: var(--title-font);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.sign-in-lead {
+  margin: 8px 0 28px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.sign-in-card {
+  padding: 22px 18px 18px;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(13, 31, 28, 0.06), 0 12px 32px rgba(13, 31, 28, 0.07);
+}
+
+.sign-in-field {
+  margin: 0 0 16px;
+}
+
+.sign-in-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sign-in-input {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1.5px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 17px;
+  transition: border-color 160ms var(--curve), background 160ms var(--curve);
+}
+
+.sign-in-input:focus {
+  outline: none;
+  border-color: var(--abbaas);
+  background: #ffffff;
+}
+
+.sign-in-message {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fbeceb;
+  color: #9a2a22;
+  font-size: 15px;
+}
+
+.sign-in-button {
+  display: block;
+  width: 100%;
+  height: var(--button-height);
+  margin-top: 6px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--ink);
+  color: #ffffff;
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sign-in-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
