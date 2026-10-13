@@ -994,6 +994,7 @@ functional
 - The Saved message appears only after the entry has landed and the count has finished (its opacity rises from 0 with a 18 px rise over 280 to 420 ms).
 - With prefers-reduced-motion: reduce, saving shows Home in its end state at once, with no data-motion at any time, no clip-path and the Saved message visible immediately.
 - Opening a form keeps version one's circle reveal from the tapped button.
+- A counting box keeps value 1's structure on every frame: the whole-dollar part and the data-cents span are written separately, so the cents stay at half size while counting and after it ends.
 
 ### Reuse analysis
 | Symbol | Locator | Decision | Reason |
@@ -1061,6 +1062,7 @@ functional
 - Opening a form: a white ripple (120 px circle, rgba(255,255,255,0.55)) scales from 0.2 to 1.4 and fades over 360 ms at the tapped button's centre (data-ripple, aria-hidden), the circle reveal of version one runs, and the form's rows (each carrying data-row) rise from translateY(16px) and fade in, 45 ms apart starting 240 ms after the reveal starts.
 - The Home reached by a save plays only value 6's motion, not this entrance.
 - With prefers-reduced-motion: reduce none of this runs: no data-motion, no data-ripple, every element in its end state from the first frame.
+- Nothing in an entrance ever extends past the screen's edges: the entries area clips horizontally (overflow-x: clip, with no clip vertically), so a card sliding 28 px in from its side is cut at the list's edge rather than widening the page; this keeps version one's no-horizontal-overflow check true on every frame from 360 px.
 
 ### Reuse analysis
 | Symbol | Locator | Decision | Reason |
@@ -1099,3 +1101,198 @@ Verification command: `npm ci`
 Verification command: `npx playwright install chromium`
 Verification command: `npm run build`
 Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
+## Refined board value 8: layout and install hold after the entrances
+
+### Purpose
+Keep version one's layout and install guarantees true on the refined board, measured once each screen's entrance has finished.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites version one's layout oracle (tests/acceptance/layout-and-install.spec.ts) at the same path: it measured Home and the forms the moment they appeared, which value 7's entrances now animate.
+- Value 7's entrances move cards 28 px and rows 16 px while data-motion is present; every measurement waits until no element carries data-motion.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/theme.css` | EXTEND | Holds the column, safe-area and touch-target rules; changed only if a measurement at rest fails. |
+
+### Paradigm
+functional
+
+### Decisions
+- Every check of version one's layout value stands unchanged (360 px to 560 px column, no horizontal scroll, no element past the viewport's edges, Send and Receive above env(safe-area-inset-bottom), every button, chip and link at least 44 px tall, manifest name 'Abbaas Ledger', short name 'Ledger', display standalone, 192/512/maskable icons), applied to the refined board's screens: Home, the send form in USD and in MVR, and the receive form.
+- A screen is measured only at rest: after it appears, wait until no element carries data-motion, and for a form until its currency pill has reached the pressed half.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the send form, Home after saving and its Saved message.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails. | Outcome: Retry | Observation: Home shows the alert 'Could not load the ledger. Try again.'
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Once each screen's entrance has played, every screen of the refined board fills the phone's width from 360 px upward with no horizontal scrolling and no element past the screen's edge, keeps the Send and Receive buttons clear of Android's gesture bar, stays a centred column no wider than 560 px on wider screens, keeps every button and chip at least 44 px tall, and the app still installs on Android with its own name and icon.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account with a person and a few sends and payments through the service role. A Chromium context signs in at 360 by 780 and walks Home, the send form (USD, then MVR) and the receive form at widths 360, 390, 412 and 800 px, waiting before each measurement until no element carries data-motion; it also fetches the web app manifest and its icons.
+
+Expected: At every width and on every screen, measured at rest: document scrollWidth is no larger than clientWidth and no visible element's box extends past the viewport's left or right edge; at 800 px the boxes and bottom buttons lie within a centred column at most 560 px wide; the Send and Receive buttons' bottoms are at least 16 px above the viewport bottom; every visible button, chip and link is at least 44 px tall; the manifest has name 'Abbaas Ledger', short_name 'Ledger', display 'standalone' and icons of 192 and 512 px including a maskable one, and each icon URL loads as a PNG.
+
+Falsifier: Horizontal scrolling, an element past the edge at rest, a column wider than 560 px, a touch target under 44 px, or a missing manifest field fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/layout-and-install.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+## Refined board value 5: no Saved message and no Undo after a save
+
+### Purpose
+Remove the Saved message and its Undo from Home: after a save the new entry's ringed card arriving on its own side is the only feedback.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites the oracle at tests/acceptance/undo.spec.ts, which asserted the Saved message and Undo; the new oracle asserts their absence at the same path.
+- LedgerStore.removeEntry and its Supabase adapter stay, unused by the UI, for a later delete feature.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | Drops the Saved message, its tick, its sentence, the Undo button and the undo error. |
+| `src/main.ts` | EXTEND | Drops the onUndo wiring; keeps the just-saved entry id and balance-before that value 6's arrival and count use. |
+| `src/ui/motion.ts` | EXTEND | Drops the Saved message's held/shown rise. |
+| `src/ui/theme.css` | EXTEND | Drops the Saved message, tick, Undo and undo-error styles. |
+
+### Paradigm
+functional
+
+### Decisions
+- Home never renders a data-saved-message element, a role=status save message, the words 'Saved.' or an Undo control, after a save or at any other time.
+- After a save the new entry's card carries the 2 px ring in its colour (value 6) and arrives from its own side; that is the whole feedback.
+- The saved entry stays stored; reloading shows it with no message and no ring.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the send form, Home after saving and its Saved message.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: After a save there is no Saved message and no Undo anywhere on Home: the new entry's card, arriving on its own side of the centre line with a ring in its colour, is the only feedback, and the stored entry stays stored.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account with one saved person Mariyam Nisha and one USD send of $400.00 through the service role; a Chromium context at 390 by 844 signs in. It taps Send, types 100, taps Mariyam Nisha and taps 'Send · $100.00'; it waits until no element carries data-motion; it then opens Receive, types 50 and taps 'Receive · $50.00', waits again, and reloads.
+
+Expected: After each save Home shows no element with data-saved-message, no role=status element containing 'Saved', no visible text 'Saved.', and no button or link named Undo; the new entry's card (the $100.00 card, then the $50.00 card) has a 2 px border in its kind's colour (rgb(36, 80, 138) for the send, rgb(15, 111, 104) for the payment) and lies on its own half; the abbaas box reads data-amount 50000 after the send and 45000 after the payment. After the reload there is still no Saved message or Undo, no card carries the ring, there are three data-entry cards, and the service role reads three entries.
+
+Falsifier: Any Saved message, any Undo control, a missing ring on the new card, or a save that is not stored fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/undo.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+## Refined board value 6: save motion with an uncut ring and no Saved message
+
+### Purpose
+Make saving play the board's SaveSend/SaveReceive motion: the white button is pressed, Home grows as a circle from its centre over the dimmed form, then only the new entry arrives from its own side with an uncut ring and the balance counts.
+
+### Constraints
+- The visual reference is the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi as read on 2026-10-12; the app matches it exactly, light theme only.
+- The attribute contract fixed by version one stays in force unless a decision below changes it: data-box (you/abbaas) with data-state and data-amount, data-square, data-empty-hint, data-total, data-day, data-entry, data-person, data-after, data-action (send/receive), data-saved-message, data-form (send/receive), data-person-chip, data-prefix, data-usd and data-motion.
+- This rewrites version one's motion oracle (tests/acceptance/motion.spec.ts) at the same path, which had entries arriving from the other side and Home replacing the form at once.
+- Motion curve cubic-bezier(0.2, 0.8, 0.2, 1); with prefers-reduced-motion nothing animates and data-motion is never set.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/motion.ts` | EXTEND | Adds the grow of Home from a point over a dimmed layer, and turns the new entry's arrival to come from its own side. |
+| `src/main.ts` | EXTEND | After a successful save keeps the form mounted under a dim layer, mounts Home above it growing from the save button's centre, and removes the form when Home fills the screen. |
+| `src/ui/home.ts` | EXTEND | Marks the new entry with a ring in its colour and delays the Saved message until the entry and the count have landed. |
+| `src/ui/send-form.ts` | EXTEND | Passes the save button's centre with a successful save and shows its pressed state. |
+| `src/ui/receive-form.ts` | EXTEND | The same for the receive form. |
+| `src/ui/theme.css` | EXTEND | Pressed state, dim layer and ring styles. |
+
+### Paradigm
+functional
+
+### Decisions
+- On a successful save the save button shows a pressed state (a 16 % dark overlay, 120 ms) and the form stays mounted under a dim layer (rgba(13,31,28,0.3), fading in over 320 ms).
+- Home is mounted above them with data-motion='grow' and clip-path circle(R at X Y) where X Y is the centre of the save button in Home's box; R steps from 0 to past the screen's far corner over 520 ms; at the end the clip-path is removed, data-motion is dropped and the form and dim layer leave the DOM. The back button state is as in version one (the form's hash is gone).
+- Once Home fills the screen, only the new entry animates: it carries data-motion='enter' and starts translated 44 px toward its own side and scaled 0.94 (a send from the left, translateX(-44px); a payment from the right, translateX(44px)), arriving over 520 ms; its card has a 2 px ring in its colour (#24508a send, #0f6f68 payment) that stays until the next screen. A new day group opens its space (max-height) so older entries move down rather than jump.
+- The holder's box counts from the balance before the save to the one after (data-motion='count', 700 ms); when the holder changes both boxes carry data-motion='swap' for 900 ms while his box drains and the owner's fills.
+- With prefers-reduced-motion: reduce, saving shows Home in its end state at once, with no data-motion at any time, and no clip-path.
+- Opening a form keeps version one's circle reveal from the tapped button.
+- A counting box keeps value 1's structure on every frame: the whole-dollar part and the data-cents span are written separately, so the cents stay at half size while counting and after it ends.
+- The new entry's ring is drawn inside its card (an inset 2 px box-shadow in its colour, or a border inside the card's box), so value 7's horizontal clip of the entries area never cuts it at the screen edge.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+
+### Prefactoring
+Not applicable: Version one's modules are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape of version one is kept.
+
+### Boundaries
+- Driving port: The built bundle's DOM during and after a save.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on the domain modules and port types; the Supabase adapter depends on the port; main.ts composes them.
+- Failure: Condition: Saving the entry fails because the server cannot be reached. | Outcome: Retry | Observation: The form stays open with every typed value and shows 'Could not save. Try again.'
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Tapping the white Send or Receive button on a form presses it, then Home grows as a circle from that button's centre over the dimmed form; once Home fills the screen only the new entry moves, arriving from its own side (a send from the left, a payment from the right) with a ring in its colour that is never cut off, the balance counts to its new value, and a payment larger than Abbaas held drains his box while the owner's fills; with the device set to reduce motion, Home shows its end state at once.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has person Mariyam Nisha and one USD send of $400.00. Test A (normal motion): it opens Send, types 100, taps Mariyam Nisha and taps 'Send · $100.00', sampling the DOM every animation frame. Test B, on a fresh account seeded the same way: it opens Receive, types 600 and taps 'Receive · $600.00', sampling likewise. Test C uses a context with reducedMotion 'reduce' on a fresh account and repeats test A.
+
+Expected: Test A: right after the tap Home's root carries data-motion 'grow' while the send form is still in the DOM, and its computed clip-path is a circle whose centre is within 4 px of the centre the save button had; within 900 ms of the tap the form is gone and Home's root has no clip-path and no data-motion. The new entry (the $100.00 card) carries data-motion 'enter' with a transform whose x translation is negative at its first sample, and the abbaas box carries data-motion 'count'; the card shows a 2 px ring in rgb(36, 80, 138) (border or inset box-shadow) whose whole box lies inside the viewport and inside the entries area at rest. Test B: the new payment card's first sampled x translation is positive, both boxes carry data-motion 'swap', and at the end the you box reads data-amount 20000. Test C: no element ever carries data-motion, Home's root never has a clip-path, and the abbaas box data-amount 50000 is visible on the first frame Home is shown.
+
+Falsifier: Home replacing the form without a grow from the button, an entry arriving from the wrong side, a ring cut off at the edge, or any motion under reduce fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/motion.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
