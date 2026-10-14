@@ -9,11 +9,16 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, readEntries, seedHistory, type Account } from '../support/accounts.js'
 
-// Delete value 2: confirm, delete and recount.
+// Delete value 3: one tap on Delete removes the entry at once.
+//
+// This replaces the confirmation integrated at 52ffbc4: the owner asked on
+// 2026-10-14 for the question to go, so this oracle asserts that no question is
+// ever asked and no Cancel is ever offered, and that the single tap is itself the
+// delete.
 //
 // Judged through the declared public port only: the built bundle's DOM as a phone
-// browser sees it - the sheet's foot in each of its states (the question, its
-// hint, the buttons it offers and the ones it withholds, the role=alert note),
+// browser sees it - the sheet's foot in each of its three declared states (at
+// rest, while the removal is out, and after a Retry with its role=alert note),
 // Home's cards, its data-count, its balance boxes and its data-total figures, and
 // the hash the back button walks - plus, outside the browser, the rows the
 // account still holds, read through the service role, so a delete that only
@@ -178,7 +183,30 @@ const expectHomeWithoutTheSend = async (page: Page): Promise<void> => {
   expect(stored.map((entry) => entry.usd_cents)).toEqual([MVR_SEND_CENTS, PAYMENT_CENTS])
 }
 
-test('Delete asks before it deletes: Cancel keeps the entry, confirming removes it from storage and Home is recounted without it, now and after a reload', async ({
+/**
+ * The question the owner asked to have removed, in every wording the replaced
+ * value painted, plus the button it offered. None of it may appear anywhere on
+ * the page at any point of a delete.
+ */
+const expectNothingAsked = async (page: Page): Promise<void> => {
+  const body = page.locator('body')
+  await expect(body).not.toContainText('Delete this entry?')
+  await expect(body).not.toContainText('This cannot be undone.')
+  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
+}
+
+/** The foot at rest and after a Retry: exactly Close then Delete, both enabled. */
+const expectFootOffersBothEnabled = async (dialog: Locator): Promise<void> => {
+  const close = dialog.getByRole('button', { name: 'Close' })
+  const remove = dialog.getByRole('button', { name: 'Delete' })
+  await expect(close).toBeVisible()
+  await expect(close).toBeEnabled()
+  await expect(remove).toBeVisible()
+  await expect(remove).toBeEnabled()
+  await expect(dialog.locator('[data-sheet-actions]').getByRole('button')).toHaveCount(2)
+}
+
+test('one tap on Delete removes the entry at once, with no question and no Cancel: the sheet closes and Home is recounted without it, now and after a reload', async ({
   page,
 }) => {
   await signIn(page)
@@ -203,44 +231,73 @@ test('Delete asks before it deletes: Cancel keeps the entry, confirming removes 
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toHaveAttribute('data-entry-sheet', sendId!)
-  // At rest the foot offers Delete and Close, and asks nothing.
-  await expect(dialog.getByRole('button', { name: 'Close' })).toBeVisible()
-  await expect(dialog).not.toContainText('Delete this entry?')
-
-  // ----- Tapping Delete asks, in place, and withholds Close. -----
-  await dialog.getByRole('button', { name: 'Delete' }).click()
-  await expect(dialog).toContainText('Delete this entry?')
-  await expect(dialog).toContainText('This cannot be undone.')
-  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Delete' })).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Close' })).toHaveCount(0)
-  // The entry is still being read while it is being asked about.
+  // At rest the foot offers exactly Close and Delete, and asks nothing.
+  await expectFootOffersBothEnabled(dialog)
+  await expectNothingAsked(page)
+  // The entry being read is the $400.00 send.
   await expect(dialog.locator('[data-sheet-usd]')).toHaveText('$400.00')
   await expect(dialog.locator('[data-sheet-person]')).toContainText(SEEDED_PERSON)
   await expect(dialog.locator('[data-sheet-date]')).toContainText('Today')
-  // Asking is not deleting.
-  expect(await readEntries(stack, account)).toHaveLength(3)
 
-  // ----- Cancel goes back to Delete and Close, and writes nothing. -----
-  await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await expect(dialog).not.toContainText('Delete this entry?')
-  await expect(dialog.getByRole('button', { name: 'Close' })).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Delete' })).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
-  await expect(page.locator('[data-entry]')).toHaveCount(3)
-  await expect(page.locator('[data-count]')).toHaveAttribute('data-count', '3')
-  expect(await readEntries(stack, account)).toHaveLength(3)
+  // ----- While the removal is out: the same two buttons, both disabled, and
+  // neither the scrim nor Escape is allowed to close the sheet. The DELETE is
+  // held at the public port so this state can be read at all; the tap that
+  // started it was a single tap, with nothing asked in between. -----
+  let releaseDelete = (): void => {}
+  const deleteSent = new Promise<void>((resolveSent) => {
+    page.route(ENTRIES_ENDPOINT, async (route) => {
+      if (route.request().method() !== 'DELETE') {
+        await route.continue()
+        return
+      }
+      resolveSent()
+      await new Promise<void>((resolveHeld) => {
+        releaseDelete = resolveHeld
+      })
+      await route.continue()
+    })
+  })
 
-  // ===== Delete, then the confirming Delete: the entry goes for good. =====
   await dialog.getByRole('button', { name: 'Delete' }).click()
-  await expect(dialog).toContainText('Delete this entry?')
-  await dialog.getByRole('button', { name: 'Delete' }).click()
-  // The sheet falls as it does for Close; read Home once nothing is moving.
+  await deleteSent
+
+  // One tap was enough to send it: nothing was asked, and no third button
+  // appeared to confirm it.
+  await expectNothingAsked(page)
+  const closeButton = dialog.getByRole('button', { name: 'Close' })
+  const deleteButton = dialog.getByRole('button', { name: 'Delete' })
+  await expect(closeButton).toBeVisible()
+  await expect(closeButton).toBeDisabled()
+  await expect(deleteButton).toBeVisible()
+  await expect(deleteButton).toBeDisabled()
+  await expect(dialog.locator('[data-sheet-actions]').getByRole('button')).toHaveCount(2)
+
+  // A scrim tap and Escape are ignored while it is out: the sheet stays.
+  await scrim(page).click({ position: { x: 10, y: 10 } })
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('data-entry-sheet', sendId!)
+  expect(new URL(page.url()).hash).toBe(`#entry/${sendId}`)
+
+  // ----- Let it land: the sheet falls as it does for Close. -----
+  releaseDelete()
   await settled(page)
+  await page.unroute(ENTRIES_ENDPOINT)
 
   await expectHomeWithoutTheSend(page)
+  await expectNothingAsked(page)
   // The sheet's own hash is gone, so Home is what the phone is showing.
   expect(new URL(page.url()).hash).not.toContain('entry/')
+
+  // ----- The sheet's history entry was left by going back, so the phone's back
+  // button does not reopen the sheet of an entry that no longer exists. -----
+  await page.goBack()
+  await settled(page)
+  await expect(sheet(page)).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.goForward()
+  await settled(page)
+  await expect(sheet(page)).toHaveCount(0)
 
   // ----- A reload reads the same ledger back: the delete was storage, not paint.
   await page.reload()
@@ -288,9 +345,10 @@ test('a delete that cannot reach the server keeps the sheet open with Could not 
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toHaveAttribute('data-entry-sheet', paymentId!)
+  await expectFootOffersBothEnabled(dialog)
+  // One tap, nothing asked.
   await dialog.getByRole('button', { name: 'Delete' }).click()
-  await expect(dialog).toContainText('Delete this entry?')
-  await dialog.getByRole('button', { name: 'Delete' }).click()
+  await expectNothingAsked(page)
 
   // ----- The sheet stays open on its details and says so. -----
   const note = dialog.getByRole('alert')
@@ -301,10 +359,10 @@ test('a delete that cannot reach the server keeps the sheet open with Could not 
   await expect(scrim(page)).toBeVisible()
   await expect(dialog.locator('[data-sheet-usd]')).toHaveText('$300.00')
   await expect(dialog).toContainText('Paid back by Abbaas')
-  // The foot offers its two ordinary buttons again, and asks nothing.
-  await expect(dialog.getByRole('button', { name: 'Delete' })).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Close' })).toBeVisible()
-  await expect(dialog).not.toContainText('Delete this entry?')
+  // The note sits above the foot, which offers its two ordinary buttons again,
+  // enabled, and asks nothing.
+  await expectFootOffersBothEnabled(dialog)
+  await expectNothingAsked(page)
 
   // The entry is still listed under the sheet and still stored.
   await expect(page.locator('[data-entry]')).toHaveCount(2)
