@@ -2,11 +2,12 @@
 // dimmed Home that is still mounted underneath it.
 //
 // The sheet is handed a LedgerEntry, a way to leave and a way to remove that one
-// entry. It still knows no store and no account: it asks before it removes, it
-// calls what it was handed at most once per confirmation, and it never touches
-// Home. So Home's count, its boxes and its totals cannot move from in here - a
-// removal that goes through hands back to the router, which repaints Home from a
-// fresh read, and a removal that fails leaves both the page and the rows alone.
+// entry. It still knows no store and no account: it asks nothing before it
+// removes, it calls what it was handed at most once per tap, and it never
+// touches Home. So Home's count, its boxes and its totals cannot move from in
+// here - a removal that goes through hands back to the router, which repaints
+// Home from a fresh read, and a removal that fails leaves both the page and the
+// rows alone.
 //
 // The attribute contract this value adds, and every later value keeps:
 //   - the sheet carries data-entry-sheet="<entries.id>", role=dialog,
@@ -17,10 +18,11 @@
 //     data-sheet-rate; a USD entry has neither row
 //   - a send's person carries data-sheet-person; a payment has no such row
 //   - the day carries data-sheet-date, worded exactly as Home's day label is
-//   - the foot offers Delete and Close at rest; tapping Delete turns it, in
-//     place, into 'Delete this entry?' with Cancel and Delete and no Close; a
-//     removal that could not land puts a role=alert note above Delete and Close
-//     again. Every detail above the foot is unchanged in all of them.
+//   - the foot offers Close and Delete at rest, side by side, and the same two
+//     while a removal is out, both disabled; a removal that could not land puts
+//     a role=alert note above those same two buttons, enabled again. Every
+//     detail above the foot is unchanged in all three, and no question and no
+//     Cancel is ever painted in any of them.
 // Nothing here carries data-entry, data-person or any other attribute of Home's
 // own contract: the sheet is a second reading of an entry, not a second copy of
 // the list.
@@ -136,16 +138,17 @@ const renderSheet = (entry: LedgerEntry): HTMLElement => {
 }
 
 /**
- * What the foot is saying right now.
- *   - 'rest': Delete and Close, and no question.
- *   - 'confirm': the question, its hint, then Cancel and Delete. No Close.
- *   - 'running': the same two buttons, both disabled, while the removal is out.
- *   - 'retry': Delete and Close again, with the role=alert note above them.
- * The details above the foot are the same in all four.
+ * What the foot is saying right now. Every state offers the same two buttons -
+ * Close on the left and the red Delete on the right - so the owner's tap is
+ * never answered with a question and the set never changes shape.
+ *   - 'rest': Close and Delete, both enabled.
+ *   - 'running': the same two, both disabled, while the removal is out.
+ *   - 'retry': the same two enabled again, with the role=alert note above them.
+ * The details above the foot are the same in all three.
  */
-type FootState = 'rest' | 'confirm' | 'running' | 'retry'
+type FootState = 'rest' | 'running' | 'retry'
 
-/** One button of the foot, built the one way so all four states match. */
+/** One button of the foot, built the one way so all three states match. */
 const footButton = (label: string, className: string): HTMLButtonElement => {
   const button = document.createElement('button')
   button.type = 'button'
@@ -175,8 +178,8 @@ export type EntrySheetHandlers = {
    */
   readonly onLeave: () => void
   /**
-   * What a confirmed Delete asks for: the one removal of this entry. The sheet
-   * calls it at most once per confirmation and judges nothing itself - a
+   * What a tap on Delete asks for, at once: the one removal of this entry. The
+   * sheet calls it at most once per tap and judges nothing itself - a
    * 'removed' is the store's word that the row is gone, a 'retry' its word that
    * it is still there.
    */
@@ -229,15 +232,15 @@ export const openEntrySheet = (
   /**
    * Whether a removal is out right now. It guards the second tap: the buttons
    * are disabled while it runs, and this refuses anything that reaches the
-   * handler anyway, so removeEntry is called exactly once per confirmation.
+   * handler anyway, so removeEntry is called exactly once per tap.
    */
   let running = false
 
   /**
    * Paints the foot for one state, in place, under the details that stay. The
    * buttons are rebuilt each time rather than hidden, so the set a reader is
-   * offered IS the set that exists: while the question is up there is no Close
-   * at all, and at rest there is no Cancel.
+   * offered IS the set that exists: exactly Close and Delete, in that order, in
+   * every state, and never a third button to confirm anything.
    *
    * `takeFocus` keeps the keyboard inside the sheet across a repaint, because
    * the button that was focused has just left the DOM.
@@ -245,22 +248,6 @@ export const openEntrySheet = (
   const paintFoot = (state: FootState, takeFocus = true): void => {
     if (foot === null) return
     foot.replaceChildren()
-
-    if (state === 'confirm' || state === 'running') {
-      const ask = document.createElement('div')
-      ask.className = 'sheet-ask'
-
-      const question = document.createElement('p')
-      question.className = 'sheet-ask-question'
-      question.textContent = 'Delete this entry?'
-
-      const hint = document.createElement('p')
-      hint.className = 'sheet-ask-hint'
-      hint.textContent = 'This cannot be undone.'
-
-      ask.append(question, hint)
-      foot.append(ask)
-    }
 
     if (state === 'retry') {
       // Spoken the moment it is painted: the owner's tap did not land, and the
@@ -274,59 +261,40 @@ export const openEntrySheet = (
 
     const actions = document.createElement('div')
     actions.className = 'sheet-actions'
-    const asking = state === 'confirm' || state === 'running'
-    // Side by side while confirming, stacked otherwise; the shape is the
-    // stylesheet's business and this is the handle it hangs on.
-    actions.dataset.sheetActions = asking ? 'confirm' : 'rest'
-
-    if (asking) {
-      const cancel = footButton('Cancel', 'sheet-cancel')
-      const confirm = footButton('Delete', 'sheet-delete')
-      confirm.dataset.sheetDelete = ''
-      // While the removal is out neither button can be tapped again, which is
-      // what makes a second tap do nothing rather than remove twice.
-      cancel.disabled = state === 'running'
-      confirm.disabled = state === 'running'
-
-      cancel.addEventListener('click', () => {
-        // Nothing has been written, so there is nothing to take back: the foot
-        // simply stops asking.
-        if (running) return
-        paintFoot('rest')
-      })
-      confirm.addEventListener('click', () => {
-        void runDelete()
-      })
-
-      actions.append(cancel, confirm)
-      foot.append(actions)
-      if (takeFocus) cancel.focus()
-      return
-    }
-
-    const remove = footButton('Delete', 'sheet-delete')
-    remove.dataset.sheetDelete = ''
-    remove.addEventListener('click', () => {
-      // Tapping Delete asks; it does not delete.
-      paintFoot('confirm')
-    })
+    // One shape for every state, because the two buttons are the same two in
+    // every state; the shape is the stylesheet's business and this is the
+    // handle it hangs on.
+    actions.dataset.sheetActions = 'rest'
 
     const close = footButton('Close', 'sheet-close')
     close.dataset.sheetClose = ''
     close.addEventListener('click', () => {
+      // A removal already out is left to answer, as Escape and the scrim are.
+      if (running) return
       handlers.onLeave()
     })
 
-    // Close on the left and the red Delete on the right, so Delete sits where the
-    // confirming Delete will appear and the second tap lands on the same spot.
+    const remove = footButton('Delete', 'sheet-delete')
+    remove.dataset.sheetDelete = ''
+    remove.addEventListener('click', () => {
+      // Tapping Delete IS the delete: nothing is asked in between.
+      void runDelete()
+    })
+
+    // While the removal is out neither button can be tapped again, which is what
+    // makes a second tap do nothing rather than remove twice.
+    close.disabled = state === 'running'
+    remove.disabled = state === 'running'
+
+    // Close on the left and the red Delete on the right, side by side.
     actions.append(close, remove)
     foot.append(actions)
     if (takeFocus) remove.focus()
   }
 
   /**
-   * The one removal. The foot goes to 'running' first, so the confirmation that
-   * was tapped cannot be tapped again, and the store's answer decides what the
+   * The one removal. The foot goes to 'running' first, so the Delete that was
+   * tapped cannot be tapped again, and the store's answer decides what the
    * sheet becomes: gone, or open again with the note above its buttons.
    */
   async function runDelete(): Promise<void> {

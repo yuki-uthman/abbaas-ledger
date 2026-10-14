@@ -1983,8 +1983,8 @@ body {
   color: var(--ink);
 }
 
-/* The foot: whatever it is saying - nothing, the question, or the note that a
-   delete did not land - above the buttons it is offering. */
+/* The foot: whatever it is saying - nothing, or the note that a delete did not
+   land - above the two buttons it is offering. */
 .entry-sheet .sheet-foot {
   display: flex;
   flex-direction: column;
@@ -1992,9 +1992,10 @@ body {
   margin-top: 22px;
 }
 
-/* Every state lays its two buttons side by side on equal halves - Close or
-   Cancel on the left, the red Delete on the right - so the buttons never jump
-   when the question comes up and the confirming tap lands where the first did. */
+/* Every state lays its two buttons side by side on equal halves - Close on the
+   left, the red Delete on the right - so nothing moves between them: the foot a
+   removal is sent from, the foot it is out on, and the foot a Retry comes back
+   to are the same two buttons in the same two places. */
 .entry-sheet .sheet-actions {
   display: flex;
   flex-direction: row;
@@ -2006,32 +2007,13 @@ body {
   min-width: 0;
 }
 
-/* --- Delete value 2: the question the foot turns into. ---
+/* --- Delete value 3: one tap on Delete removes the entry. ---
 
-   It is the sheet's own foot rather than a browser dialog, so the entry's
-   details stay readable above it and the owner answers in the place they
-   tapped. */
-
-.entry-sheet .sheet-ask {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-top: 2px;
-}
-
-.entry-sheet .sheet-ask-question {
-  margin: 0;
-  font-family: var(--title-font);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.entry-sheet .sheet-ask-hint {
-  margin: 0;
-  font-size: 13.5px;
-  color: var(--muted);
-}
+   The question value 2 turned the foot into is gone, as the owner asked on
+   2026-10-14, and so is every shape it was drawn with: no .sheet-ask, no
+   question, no hint and no Cancel is declared anywhere, so none of them can be
+   drawn under another name. What is left is the note a delete that could not
+   land puts above the two ordinary buttons. */
 
 /* A delete that could not reach the server, said in the app's one soft red, the
    same shape the sign-in message is read in. */
@@ -2045,7 +2027,6 @@ body {
 }
 
 .entry-sheet .sheet-delete,
-.entry-sheet .sheet-cancel,
 .entry-sheet .sheet-close {
   width: 100%;
   min-height: 52px;
@@ -2062,20 +2043,19 @@ body {
   font-weight: 700;
 }
 
-/* Close, and Cancel in its place while the question is up, are plain: the page's
-   own colour, read in ink, so the red one is the only thing on the sheet that
-   looks like a decision. */
-.entry-sheet .sheet-close,
-.entry-sheet .sheet-cancel {
+/* Close is plain: the page's own colour, read in ink, so the red Delete is the
+   only thing on the sheet that looks like a decision. */
+.entry-sheet .sheet-close {
   background: var(--page);
   color: var(--ink);
   font-weight: 700;
 }
 
-/* While the removal is out neither answer can be given again, and both say so
-   by fading rather than by going away: the question stays readable. */
+/* While the removal is out neither button can be tapped again, and both say so
+   by fading rather than by going away: the entry's details, and the two buttons
+   the owner will have back, stay readable throughout. */
 .entry-sheet .sheet-delete:disabled,
-.entry-sheet .sheet-cancel:disabled {
+.entry-sheet .sheet-close:disabled {
   opacity: 0.55;
   cursor: default;
 }
