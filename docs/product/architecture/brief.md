@@ -1916,3 +1916,82 @@ Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-o
 Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+## Delete at once: one tap on Delete removes the entry
+
+### Purpose
+Let the owner remove a wrong entry with one tap on the sheet's Delete, with no confirmation, Home recounted from what is stored, and a Retry when the server cannot be reached.
+
+### Constraints
+- The sheet keeps the app's own tokens in src/ui/theme.css (page #f4f7f6, ink #0d1f1c, muted #4c5f5b, You blue #24508a, Abbaas teal #0f6f68, hairline #cfd9d6, the red Delete #b3261e, Manrope for titles and figures, Source Sans 3 for text, the one curve --curve). Light theme only.
+- The attribute contract integrated at 8f40bca stays in force: Home's data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-motion, data-spine; and the sheet's data-entry-sheet, data-sheet-scrim, data-sheet-usd, data-sheet-mvr, data-sheet-rate, data-sheet-person, data-sheet-date, data-sheet-delete, data-sheet-close and data-sheet-actions. Every other acceptance spec keeps passing.
+- The entry sheet integrated at 8f40bca (asserted by tests/acceptance/entry-sheet.spec.ts) stays: a tap on a Home card carrying data-entry=<id> pushes location.hash '#entry/<id>' and shows Home with the sheet open; the sheet is one element with role=dialog, aria-modal=true and data-entry-sheet=<id> above a full-screen data-sheet-scrim; it shows the title 'Sent for Abbaas' or 'Paid back by Abbaas', data-sheet-usd, data-sheet-mvr and data-sheet-rate only for MVR, data-sheet-person only for a send, data-sheet-date always; its foot holds exactly two buttons named 'Close' (left) and 'Delete' (right, red), side by side; Close, a scrim tap, Escape and the back button close it; while it moves it carries data-motion and none remains once it rests or is gone.
+- No schema, policy, migration or Supabase change: the existing LedgerStore.removeEntry and its PostgREST adapter, under the entries_delete_own policy, are the only delete path.
+- The owner asked on 2026-10-14 to remove the confirmation that the delete feature integrated at 52ffbc4 added; this value replaces that confirmation and rewrites tests/acceptance/delete-entry.spec.ts, which asserted it.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/entry-sheet.ts` | EXTEND | Delete starts the removal at once; the confirm state, its question, its hint and Cancel are removed; the running state disables Close and Delete. |
+| `src/ui/theme.css` | EXTEND | The rules for the confirmation row and Cancel are removed; the disabled look of Close joins Delete's. |
+
+### Paradigm
+functional
+
+### Decisions
+- Tapping the red Delete in the sheet's foot calls LedgerStore.removeEntry with the entry's id once, at once. No text 'Delete this entry?' or 'This cannot be undone.' and no button named 'Cancel' is ever painted.
+- The foot has three states: at rest 'Close' and 'Delete' side by side (Close left, red Delete right); while the removal is out the same two buttons, both disabled, and a tap on the scrim or Escape is ignored; after a Retry the same two buttons enabled again with the role=alert note above them.
+- On 'removed' the sheet closes as it does for Close (the same motion and data-motion rule), the '#entry/<id>' history entry is left by going back so a later back press does not reopen it, and Home is painted from a fresh store.readEntries(): the deleted card is gone, data-count drops by one, and the boxes and data-total figures are the sums of the entries that remain. No entrance and no save motion plays.
+- On 'retry' the sheet stays open on its details with a role=alert note reading 'Could not delete. Try again.' in soft red (#fbeceb background, #9a2a22 text, 14 px radius) above Close and Delete; the entry stays in the list and in storage.
+- There is no Undo after a delete, no toast and no message on Home: the card's absence and the recounted boxes are the feedback.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| removeEntry | `src/adapters/supabase/ledger-store.ts:161` | REUSE | removeEntry already deletes under row-level security and reports a delete that matched nothing as a Retry. |
+| ENTRY_UNREMOVABLE_MESSAGE | `src/ports/ledger-store.ts:59` | REUSE | Its text 'Could not delete. Try again.' stays as it is. |
+| FootState | `src/ui/entry-sheet.ts:146` | EXTEND | The foot's states lose 'confirm'; Delete goes straight to 'running'. |
+
+### Prefactoring
+Not applicable: The removal path exists; only the step before it is taken away.
+
+### Agreement analysis
+Not applicable: The RemoveEntryOutcome shape and its message are unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the entry sheet's Delete and Home after a delete.
+- Driven port: LedgerStore: entries read and deleted over PostgREST under row-level security.
+- Dependency direction: UI modules depend on port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: The delete request cannot reach the server or deletes no row. | Outcome: Retry | Observation: The sheet stays open with 'Could not delete. Try again.' and the entry stays listed and stored.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Tapping the red Delete in an entry's sheet removes that entry at once, without asking Delete this entry? and without offering Cancel: the sheet closes, Home at once and after a reload no longer lists it, the Entries count drops by one, and the totals and the balance are worked out without it, while the other entries stay stored; if the server cannot be reached the sheet stays open with Could not delete. Try again. above Close and Delete, and the entry stays listed and stored.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account with one saved person Mariyam Nisha and, all dated the device's today, a USD send of $400.00 to Mariyam Nisha, an MVR send of MVR 10,000 at 20.00 ($500.00) to Mariyam Nisha and a USD payment of $300.00 from Abbaas, through the service role; a Chromium context at 390 by 844 signs in and waits until no element carries data-motion. Abbaas then holds $600.00. It taps the $400.00 card and waits for rest, taps the sheet's Delete once and waits until no element carries data-motion; reloads; then, with every DELETE request to the entries endpoint aborted, opens the $300.00 card and taps Delete once; finally lets requests through again, closes the sheet and reloads.
+
+Expected: Before Delete the sheet's foot has exactly the buttons 'Close' and 'Delete'. After the one tap on Delete, at no point does the sheet show 'Delete this entry?', 'This cannot be undone.' or a button named 'Cancel'; there is then no data-entry-sheet, no data-sheet-scrim and no card for the $400.00 entry; two data-entry cards remain; data-count is 2; the abbaas box reads data-amount 20000; data-total sent reads '$500.00' and data-total paid '$300.00'; the service role reads two entries, neither with the deleted id. After the reload the same holds, and loading '#entry/<deleted id>' shows Home with no sheet. With deletes aborted, one tap on Delete leaves the sheet open with a role=alert containing 'Could not delete. Try again.', buttons 'Close' and 'Delete' enabled, no 'Cancel', and the $300.00 card still listed; after closing and reloading two entries remain and the service role reads two.
+
+Falsifier: A confirmation question or a Cancel after Delete, an entry still stored or listed after the one tap, a count, box or total not recounted, a failed delete that closes the sheet or drops the card, or any Undo control fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/delete-entry.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
