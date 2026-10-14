@@ -1905,22 +1905,16 @@ body {
   margin-top: 22px;
 }
 
-/* At rest, and after a Retry: the red one first and Close under it, each a
-   comfortable thumb's height. */
+/* Every state lays its two buttons side by side on equal halves - Close or
+   Cancel on the left, the red Delete on the right - so the buttons never jump
+   when the question comes up and the confirming tap lands where the first did. */
 .entry-sheet .sheet-actions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* While the question is up the two answers sit side by side on equal halves,
-   Cancel on the left and the red Delete on the right. */
-.entry-sheet .sheet-actions[data-sheet-actions='confirm'] {
   flex-direction: row;
   gap: 10px;
 }
 
-.entry-sheet .sheet-actions[data-sheet-actions='confirm'] > button {
+.entry-sheet .sheet-actions > button {
   flex: 1 1 0;
   min-width: 0;
 }

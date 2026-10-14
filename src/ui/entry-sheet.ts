@@ -317,7 +317,9 @@ export const openEntrySheet = (
       handlers.onLeave()
     })
 
-    actions.append(remove, close)
+    // Close on the left and the red Delete on the right, so Delete sits where the
+    // confirming Delete will appear and the second tap lands on the same spot.
+    actions.append(close, remove)
     foot.append(actions)
     if (takeFocus) remove.focus()
   }
