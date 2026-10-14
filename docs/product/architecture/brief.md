@@ -1456,3 +1456,463 @@ Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spe
 Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
+## Travelling cards value 1: a send rests on Abbaas's side
+
+### Purpose
+Put every send's card on the right of the centre line, under Abbaas's box.
+
+### Constraints
+- The visual reference is the travelling-cards board https://claude.ai/artifact/JLyxbr7tdERmhwuMAimajW (built 2026-10-14) on top of the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi; light theme only; every token stays as in src/ui/theme.css.
+- Resting sides (the rule of this whole Request): a card rests on the side of whoever RECEIVED the money. A send's card lies wholly RIGHT of the centre line (Abbaas's side); a payment from Abbaas lies wholly LEFT of it (the owner's side). The row's data-side names that resting side: 'right' for a send, 'left' for a payment. The after line (data-after) lies on the other half, the side the card came from. The page is one centred column, so the centre line is the viewport's middle at every width.
+- The attribute contract integrated at 52ffbc4 stays: data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-pill, data-row, data-ripple, data-spine, data-fade, data-motion and the entry sheet's attributes. Every existing acceptance spec not rewritten by this Request keeps passing.
+- Motion contract: any element displaced by a motion carries data-motion from before its first displaced frame until it rests; a reader that waits until no element carries data-motion reads the resting layout. A new or entering card carries data-motion='cross'.
+- This rewrites the oracle at tests/acceptance/send-usd.spec.ts: every assertion it makes about the forms, storage and balances is kept; only what it asserts about which side a card lies on (and, where stated, how it moves) changes to this Request's rule.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | A send's row carries data-side='right'. |
+| `src/ui/theme.css` | EXTEND | The row's columns follow data-side: the card in the right column with its text aligned right, the after line in the left column hugging the line. |
+
+### Paradigm
+functional
+
+### Decisions
+- A send's row has data-side='right'; its card occupies the right column of the row's 1fr 36px 1fr grid and its text (amount, 'to <name>', detail) aligns right.
+- The send's after line sits in the left column, aligned right so it hugs the centre line.
+- Nothing about the send form changes.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| renderEntry | `src/ui/home.ts:112` | EXTEND | Builds each row; its data-side and node change. |
+
+### Prefactoring
+Not applicable: Home and its motions are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape is unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home, its entry cards, its boxes and totals, and the Send and Receive forms.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on domain modules and port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails because the server cannot be reached. | Outcome: Retry | Observation: Home shows 'Could not load the ledger. Try again.' and no entry cards, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Saving a USD send from the blue form, to a saved person or to a new one, stores it and, once Home rests, shows its card wholly right of the centre line on Abbaas's side, the side of whoever received the money.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has one saved person 'Mariyam Nisha' and no entries. It taps Send, keeps USD, types 250.00, taps the Mariyam Nisha chip and taps 'Send · $250.00'. Then it taps Send again, taps New person, types 'Ahmed Shifaz', taps Add, types 100, sets the Date input to yesterday and taps 'Send · $100.00'. Each Home reading is taken only once no element carries data-motion.
+
+Expected: The form (data-form send) has a Close button, the text 'New entry · Send' and the heading 'Money sent for Abbaas'; USD is pressed and the data-pill element lies over the USD button; data-prefix reads '$'; the line 'Dollars go straight onto the balance. No rate needed.' is visible; there is no element labelled Note, no data-preview-box and no text 'After saving'. The Date input's value is today and the visible chip text starts with 'Today, '. The input labelled 'Amount sent' has a computed font-size of 44px. Before a person is chosen the button named 'Send · $250.00' is disabled; after tapping Mariyam Nisha that chip has aria-pressed true and a visible tick icon and the button is enabled. After saving, Home shows one data-entry card lying wholly in the RIGHT half of the viewport with $250.00 and Mariyam Nisha, and the abbaas box reads data-amount 25000. After the second save the date chip had read yesterday's weekday before saving; Home shows two cards, both wholly in the right half, and the abbaas box reads 35000. Read through the service role, both entries are kind send, currency USD, rate null, note null, amount_minor equal to usd_cents (25000 and 10000), the first dated today and the second yesterday, with person_name Mariyam Nisha and Ahmed Shifaz.
+
+Falsifier: A note field, a preview, a send card left of the line, or a date chip that does not follow the date input fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-usd.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+## Travelling cards value 2: a payment rests on the owner's side
+
+### Purpose
+Put every payment's card on the left of the centre line, under the owner's box.
+
+### Constraints
+- The visual reference is the travelling-cards board https://claude.ai/artifact/JLyxbr7tdERmhwuMAimajW (built 2026-10-14) on top of the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi; light theme only; every token stays as in src/ui/theme.css.
+- Resting sides (the rule of this whole Request): a card rests on the side of whoever RECEIVED the money. A send's card lies wholly RIGHT of the centre line (Abbaas's side); a payment from Abbaas lies wholly LEFT of it (the owner's side). The row's data-side names that resting side: 'right' for a send, 'left' for a payment. The after line (data-after) lies on the other half, the side the card came from. The page is one centred column, so the centre line is the viewport's middle at every width.
+- The attribute contract integrated at 52ffbc4 stays: data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-pill, data-row, data-ripple, data-spine, data-fade, data-motion and the entry sheet's attributes. Every existing acceptance spec not rewritten by this Request keeps passing.
+- Motion contract: any element displaced by a motion carries data-motion from before its first displaced frame until it rests; a reader that waits until no element carries data-motion reads the resting layout. A new or entering card carries data-motion='cross'.
+- This rewrites the oracle at tests/acceptance/receive.spec.ts: every assertion it makes about the forms, storage and balances is kept; only what it asserts about which side a card lies on (and, where stated, how it moves) changes to this Request's rule.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | A payment's row carries data-side='left'. |
+| `src/ui/theme.css` | EXTEND | The payment card in the left column with its text aligned left, the after line in the right column hugging the line. |
+
+### Paradigm
+functional
+
+### Decisions
+- A payment's row has data-side='left'; its card occupies the left column and its text ('$300.00', 'from Abbaas', detail) aligns left.
+- The payment's after line sits in the right column, aligned left so it hugs the centre line.
+- Nothing about the receive form or the over-payment balance changes.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| renderEntry | `src/ui/home.ts:112` | EXTEND | Builds each row; its data-side and node change. |
+
+### Prefactoring
+Not applicable: Home and its motions are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape is unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home, its entry cards, its boxes and totals, and the Send and Receive forms.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on domain modules and port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails because the server cannot be reached. | Outcome: Retry | Observation: Home shows 'Could not load the ledger. Try again.' and no entry cards, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Saving a payment from Abbaas from the teal form stores it and, once Home rests, shows its card wholly left of the centre line on the owner's side; a payment larger than Abbaas holds still empties his box and fills the owner's with the difference.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account is seeded with person Mariyam Nisha and one USD send of $740.00 to her. It taps Receive, types 300 and taps 'Receive · $300.00'; taps Receive, types 440 and taps 'Receive · $440.00'; then taps Receive, types 200 and taps 'Receive · $200.00'. Each Home reading is taken only once no element carries data-motion.
+
+Expected: The form (data-form receive) shows 'New entry · Receive', the heading 'Payment from Abbaas', the line 'Abbaas has $740.00 of yours', USD pressed with data-pill over it, the input labelled 'Amount received' with a computed font-size of 44px, and the Date input set to today with a visible chip starting 'Today, '; there is no data-quick element, no text 'All of it', no element labelled Note, no data-preview-box, no 'After saving' text and no data-receive-note, both before typing and with an amount larger than he holds typed. After the first save the payment card lies wholly in the LEFT half of the viewport and the abbaas box reads data-amount 44000; the $740.00 send card lies wholly in the right half. After the second save both boxes are empty and the All square chip is shown. After the third save the you box is filled with data-amount 20000, the text '$200.00' and 'have his money', and the abbaas box is empty; every payment card lies wholly in the left half and none carries data-person. Read through the service role there are three receive entries, all currency USD, rate null, note null, person_name null, with usd_cents 30000, 44000 and 20000.
+
+Falsifier: Quick amounts, a note, a preview or an over-payment note on the form, a payment card right of the line, or a wrong balance after an over-payment fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/receive.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+## Travelling cards value 3: an MVR send rests on Abbaas's side
+
+### Purpose
+Keep the MVR send form as integrated and read its saved card on the right of the line.
+
+### Constraints
+- The visual reference is the travelling-cards board https://claude.ai/artifact/JLyxbr7tdERmhwuMAimajW (built 2026-10-14) on top of the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi; light theme only; every token stays as in src/ui/theme.css.
+- Resting sides (the rule of this whole Request): a card rests on the side of whoever RECEIVED the money. A send's card lies wholly RIGHT of the centre line (Abbaas's side); a payment from Abbaas lies wholly LEFT of it (the owner's side). The row's data-side names that resting side: 'right' for a send, 'left' for a payment. The after line (data-after) lies on the other half, the side the card came from. The page is one centred column, so the centre line is the viewport's middle at every width.
+- The attribute contract integrated at 52ffbc4 stays: data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-pill, data-row, data-ripple, data-spine, data-fade, data-motion and the entry sheet's attributes. Every existing acceptance spec not rewritten by this Request keeps passing.
+- Motion contract: any element displaced by a motion carries data-motion from before its first displaced frame until it rests; a reader that waits until no element carries data-motion reads the resting layout. A new or entering card carries data-motion='cross'.
+- This rewrites the oracle at tests/acceptance/send-mvr.spec.ts: every assertion it makes about the forms, storage and balances is kept; only what it asserts about which side a card lies on (and, where stated, how it moves) changes to this Request's rule.
+- Value 1 already puts every send on the right; this value's change is the oracle's side reading, and the crafter may find nothing left to change.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | The MVR send's card shows 'MVR 10,000 at 20.00' under its dollars on the right half. |
+
+### Paradigm
+functional
+
+### Decisions
+- An MVR send's card rests right of the centre line like every send, its detail line reading 'MVR 10,000 at 20.00' under '$500.00', aligned right.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| renderEntry | `src/ui/home.ts:112` | EXTEND | Builds each row; its data-side and node change. |
+
+### Prefactoring
+Not applicable: Home and its motions are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape is unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home, its entry cards, its boxes and totals, and the Send and Receive forms.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on domain modules and port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails because the server cannot be reached. | Outcome: Retry | Observation: Home shows 'Could not load the ledger. Try again.' and no entry cards, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Saving an MVR send stores the MVR amount, the rate and the USD value, and once Home rests its card, reading MVR 10,000 at 20.00 under its $500.00, lies wholly right of the centre line.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has one saved person 'Ahmed Shifaz' and no entries. It taps Send, taps MVR, types 10,000 in Amount sent and 20 in the input labelled 'Rate · MVR per $1', taps Ahmed Shifaz and taps 'Send · $500.00'; Home is read once no element carries data-motion.
+
+Expected: After tapping MVR, MVR has aria-pressed true, data-pill lies over the MVR button, data-prefix reads 'MVR', the USD note is not visible, and an input labelled 'Rate · MVR per $1' and the text 'In dollars' are visible side by side (same row, the In dollars card to the right with a white background). After typing, data-usd reads $500.00 and a button named 'Send · $500.00' is enabled. After saving, Home shows one data-entry card lying wholly in the RIGHT half of the viewport containing $500.00, 'MVR 10,000 at 20.00' and Ahmed Shifaz, and the abbaas box reads data-amount 50000. Read through the service role the entry is currency MVR, amount_minor 1000000, rate 20, usd_cents 50000, note null, person_name Ahmed Shifaz.
+
+Falsifier: A rate field under a different label, a missing In dollars card, a wrong dollar value or button name, or an MVR send card left of the line fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-mvr.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+## Travelling cards value 4: the ringed card on the receiver's side is the whole feedback
+
+### Purpose
+Keep Home free of any Saved message or Undo; the new ringed card rests on the receiver's side.
+
+### Constraints
+- The visual reference is the travelling-cards board https://claude.ai/artifact/JLyxbr7tdERmhwuMAimajW (built 2026-10-14) on top of the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi; light theme only; every token stays as in src/ui/theme.css.
+- Resting sides (the rule of this whole Request): a card rests on the side of whoever RECEIVED the money. A send's card lies wholly RIGHT of the centre line (Abbaas's side); a payment from Abbaas lies wholly LEFT of it (the owner's side). The row's data-side names that resting side: 'right' for a send, 'left' for a payment. The after line (data-after) lies on the other half, the side the card came from. The page is one centred column, so the centre line is the viewport's middle at every width.
+- The attribute contract integrated at 52ffbc4 stays: data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-pill, data-row, data-ripple, data-spine, data-fade, data-motion and the entry sheet's attributes. Every existing acceptance spec not rewritten by this Request keeps passing.
+- Motion contract: any element displaced by a motion carries data-motion from before its first displaced frame until it rests; a reader that waits until no element carries data-motion reads the resting layout. A new or entering card carries data-motion='cross'.
+- This rewrites the oracle at tests/acceptance/undo.spec.ts: every assertion it makes about the forms, storage and balances is kept; only what it asserts about which side a card lies on (and, where stated, how it moves) changes to this Request's rule.
+- Values 1 and 2 already put each card on its receiver's side; this value's change is the oracle's side reading, and the crafter may find nothing left to change.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/theme.css` | EXTEND | The new card's 2 px ring is drawn inside the card (inset box-shadow) on either half, never cut by the screen edge. |
+
+### Paradigm
+functional
+
+### Decisions
+- Home never renders a data-saved-message element, a role=status save message, the words 'Saved.' or an Undo control.
+- After a save the new card wears a 2 px ring in its kind's colour drawn inside the card, and rests on the receiver's half: a send right of the line, a payment left of it.
+- After a reload no card wears the ring.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| renderEntry | `src/ui/home.ts:112` | EXTEND | Builds each row; its data-side and node change. |
+
+### Prefactoring
+Not applicable: Home and its motions are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape is unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home, its entry cards, its boxes and totals, and the Send and Receive forms.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on domain modules and port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails because the server cannot be reached. | Outcome: Retry | Observation: Home shows 'Could not load the ledger. Try again.' and no entry cards, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: After a save there is still no Saved message and no Undo: the new card, at rest on the side of whoever received the money with the ring in its colour, is the whole feedback, and the stored entry stays stored.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has one saved person Mariyam Nisha and one USD send of $400.00, created through the service role. It taps Send, types 100, taps Mariyam Nisha and taps 'Send · $100.00'; waits until no element carries data-motion; then opens Receive, types 50 and taps 'Receive · $50.00', waits again, and reloads.
+
+Expected: After each save Home shows no element with data-saved-message, no role=status element containing 'Saved', no visible text 'Saved.', and no button or link named Undo; the new card (the $100.00 card, then the $50.00 card) shows a 2 px ring in its kind's colour (rgb(36, 80, 138) for the send, rgb(15, 111, 104) for the payment) as a border or inset box-shadow, and lies wholly on its receiver's half: the $100.00 send card in the RIGHT half, the $50.00 payment card in the LEFT half. The abbaas box reads data-amount 50000 after the send and 45000 after the payment. After the reload there is still no Saved message or Undo, no card carries the ring, there are three data-entry cards, and the service role reads three entries.
+
+Falsifier: Any Saved message, any Undo control, a missing ring, a ringed card on the sender's side, or a save that is not stored fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/undo.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+## Travelling cards value 5: Home at rest
+
+### Purpose
+Draw Home at rest as the travelling-cards board: a dot on the line for each row, the after line on the side the card came from, and the totals named by who received the money.
+
+### Constraints
+- The visual reference is the travelling-cards board https://claude.ai/artifact/JLyxbr7tdERmhwuMAimajW (built 2026-10-14) on top of the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi; light theme only; every token stays as in src/ui/theme.css.
+- Resting sides (the rule of this whole Request): a card rests on the side of whoever RECEIVED the money. A send's card lies wholly RIGHT of the centre line (Abbaas's side); a payment from Abbaas lies wholly LEFT of it (the owner's side). The row's data-side names that resting side: 'right' for a send, 'left' for a payment. The after line (data-after) lies on the other half, the side the card came from. The page is one centred column, so the centre line is the viewport's middle at every width.
+- The attribute contract integrated at 52ffbc4 stays: data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-pill, data-row, data-ripple, data-spine, data-fade, data-motion and the entry sheet's attributes. Every existing acceptance spec not rewritten by this Request keeps passing.
+- Motion contract: any element displaced by a motion carries data-motion from before its first displaced frame until it rests; a reader that waits until no element carries data-motion reads the resting layout. A new or entering card carries data-motion='cross'.
+- This rewrites the oracle at tests/acceptance/entry-list.spec.ts: every assertion it makes about the forms, storage and balances is kept; only what it asserts about which side a card lies on (and, where stated, how it moves) changes to this Request's rule.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | The row's node becomes a dot in the card's colour; the totals read 'You received' (paid, left) and 'Abbaas received' (sent, right). |
+| `src/ui/theme.css` | EXTEND | The dot, the totals' order and their figures' colours; the rows at every width from 360 px. |
+
+### Paradigm
+functional
+
+### Decisions
+- Each row's node cell holds a 10 px round dot in the card's colour (blue #24508a for a send, teal #0f6f68 for a payment) with a 4 px #f4f7f6 halo, centred on the line; it holds no arrow glyph and no text.
+- The totals row shows, left, the element with data-total='paid' reading 'You received $300.00' with its figure in #0f6f68, and right, data-total='sent' reading 'Abbaas received $1,090.00' with its figure in #24508a, right-aligned.
+- Everything else on Home stays as on the refined board: no title, the boxes at the top with their pills in the outer corners, the Entries heading and count, the day labels, the tinted cards, and the fade above the buttons.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| renderEntry | `src/ui/home.ts:112` | EXTEND | Builds each row; its data-side and node change. |
+| total | `src/ui/home.ts:310` | EXTEND | The totals' wording and order. |
+
+### Prefactoring
+Not applicable: Home and its motions are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape is unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home, its entry cards, its boxes and totals, and the Send and Receive forms.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on domain modules and port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails because the server cannot be reached. | Outcome: Retry | Observation: Home shows 'Could not load the ledger. Try again.' and no entry cards, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Home at rest reads as the travelling-cards board: sends right of the centre line and payments left of it at every width from 360 px, each row with a small round dot in its card's colour on the line and no arrow, who holds what after it on the side the card came from, and under the boxes the totals You received $… on the left and Abbaas received $… on the right.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account is seeded through the service role with people Mariyam Nisha and Ahmed Shifaz and entries over three days: a USD send of $250.00 to Mariyam Nisha, an MVR send of MVR 10,000 at 20 ($500.00) to Ahmed Shifaz, a $300.00 USD payment, and today a $340.00 USD send to Ahmed Shifaz. Home is read once no element carries data-motion, at 390 px and again at 360 px and 800 px wide.
+
+Expected: There is no heading element above the boxes and no visible text 'Abbaas Ledger' on Home; the top of the you box is within 24 to 64 px of the top of the viewport. The abbaas box is filled with data-amount 79000 and text '$790.00', its pill 'Abbaas' lies in its top-right quarter, and its amount's right edge is within 20 px of the box's right edge; the you box is empty with its pill in its top-left quarter. An h2 'Entries' is visible and data-count reads '4 entries'. There are four data-entry cards; the three send cards (Mariyam Nisha, Ahmed Shifaz MVR, today's Ahmed Shifaz) each lie wholly in the RIGHT half and the $300.00 payment card wholly in the LEFT half, at every width; each card's background is the tinted colour of its kind; each row's data-after lies on the opposite half from its card and today's reads 'Abbaas has $790.00'; no row contains the characters → or ←. Day labels read in uppercase and today's contains 'TODAY'. data-total='paid' has text 'You received $300.00' and lies left of data-total='sent', which has text 'Abbaas received $1,090.00'. An element with data-fade is present, at least 120 px tall, anchored to the bottom of the viewport, with pointer-events none.
+
+Falsifier: Sends left of the line, payments right of it, an arrow on the line, the old totals wording, a title above the boxes, a missing Entries heading or count, or no fade fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/entry-list.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+## Travelling cards value 6: the new card crosses the line
+
+### Purpose
+After a save, carry the new card from the sender's side across the centre line to the receiver's side while the boxes count.
+
+### Constraints
+- The visual reference is the travelling-cards board https://claude.ai/artifact/JLyxbr7tdERmhwuMAimajW (built 2026-10-14) on top of the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi; light theme only; every token stays as in src/ui/theme.css.
+- Resting sides (the rule of this whole Request): a card rests on the side of whoever RECEIVED the money. A send's card lies wholly RIGHT of the centre line (Abbaas's side); a payment from Abbaas lies wholly LEFT of it (the owner's side). The row's data-side names that resting side: 'right' for a send, 'left' for a payment. The after line (data-after) lies on the other half, the side the card came from. The page is one centred column, so the centre line is the viewport's middle at every width.
+- The attribute contract integrated at 52ffbc4 stays: data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-pill, data-row, data-ripple, data-spine, data-fade, data-motion and the entry sheet's attributes. Every existing acceptance spec not rewritten by this Request keeps passing.
+- Motion contract: any element displaced by a motion carries data-motion from before its first displaced frame until it rests; a reader that waits until no element carries data-motion reads the resting layout. A new or entering card carries data-motion='cross'.
+- This rewrites the oracle at tests/acceptance/motion.spec.ts: every assertion it makes about the forms, storage and balances is kept; only what it asserts about which side a card lies on (and, where stated, how it moves) changes to this Request's rule. Home's grow from the save button is kept exactly as asserted today.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/motion.ts` | EXTEND | The crossing: appear on the sender's half, hold, cross, land; data-motion='cross' throughout; the count runs during the crossing. |
+| `src/ui/home.ts` | EXTEND | animateSave plays the crossing for the new card and counts the boxes from the crossing's start. |
+| `src/ui/theme.css` | EXTEND | The lifted shadow while the card moves. |
+
+### Paradigm
+functional
+
+### Decisions
+- After Home has grown from the save button (unchanged: data-motion 'grow', a clip-path circle from the button's centre, gone within 900 ms of the tap), the new card's day group opens, then the card crosses.
+- Appear: at +120 ms the card fades in over 240 ms, scaling 0.92 to 1, displaced by translateX of minus (its own width plus the 36 px dot column) for a send, plus that for a payment, so its box lies wholly on the SENDER's half: a send's on the left, a payment's on the right. It is lifted with a soft shadow and already wears its 2 px ring.
+- Hold 500 ms there, then cross over 760 ms on cubic-bezier(0.2, 0.8, 0.2, 1) to translateX(0) on the receiver's half; the shadow settles on landing; the dot and the after line fade in after it lands.
+- The card carries data-motion='cross' from before its first displaced frame until it rests. The boxes count to the new balance over 800 ms starting with the crossing; the counting box carries data-motion 'count', and when an over-payment moves the money to the owner both boxes carry data-motion 'swap' (his drains, the owner's fills).
+- With reduced motion nothing carries data-motion, Home has no clip-path, and the card is at rest at once.
+- The whole save, from the tap to rest, is over within 2.6 s.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| enterEntry | `src/ui/motion.ts:395` | REPLACE | Today the new card slides 28 to 44 px from its own side; it becomes the crossing. |
+| countBoxAmount | `src/ui/motion.ts:443` | REUSE | The box count, started with the crossing. |
+| animateSave | `src/ui/home.ts:462` | EXTEND | Plays the crossing for the new card. |
+
+### Prefactoring
+Not applicable: Home and its motions are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape is unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home, its entry cards, its boxes and totals, and the Send and Receive forms.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on domain modules and port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails because the server cannot be reached. | Outcome: Retry | Observation: Home shows 'Could not load the ledger. Try again.' and no entry cards, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: After a save, once Home has grown from the form's button, the new card appears on the sender's side (a send on the owner's left, a payment on Abbaas's right) lifted and wearing its ring, holds there a moment, then crosses the centre line and rests on the receiver's side while the boxes count to the new balance; a payment larger than Abbaas holds drains his box as the owner's fills; with reduced motion the card is shown at rest at once.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account has person Mariyam Nisha and one USD send of $400.00. Test A (normal motion): it opens Send, types 100, taps Mariyam Nisha and taps 'Send · $100.00', sampling the DOM every animation frame until no element carries data-motion. Test B, on a fresh account seeded the same way: it opens Receive, types 600 and taps 'Receive · $600.00', sampling likewise. Test C uses a context with reducedMotion 'reduce' on a fresh account and repeats test A.
+
+Expected: Test A: right after the tap Home's root carries data-motion 'grow' while the send form is still in the DOM, and its computed clip-path is a circle whose centre is within 4 px of the centre the save button had; within 900 ms of the tap the form is gone and Home's root has no clip-path and no data-motion. The new entry (the $100.00 card) carries data-motion 'cross'; at some sample while it carries it, its bounding box lies wholly LEFT of the viewport's middle (the sender's half) while it is visible (opacity above 0.5); at rest it lies wholly RIGHT of the middle; between those, its x position only increases (it crosses once, left to right). The abbaas box carries data-motion 'count' at some sample and ends at data-amount 50000. At rest the card shows a 2 px ring in rgb(36, 80, 138) (border or inset box-shadow) whose whole box lies inside the viewport. Everything rests within 2.6 s of the tap. Test B: the new $600.00 payment card at some visible sample lies wholly RIGHT of the middle and at rest wholly LEFT of it, its x only decreasing between; both boxes carry data-motion 'swap' at some sample; at the end the you box reads data-amount 20000 and the abbaas box is empty. Test C: no element ever carries data-motion, Home's root never has a clip-path, and the $100.00 card lies wholly right of the middle and the abbaas box reads data-amount 50000 on the first frame Home is shown.
+
+Falsifier: No grow from the button, a new card that never shows on the sender's half, a card that does not end on the receiver's half, a card that crosses back, a ring cut off, or any motion under reduce fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/motion.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+## Travelling cards value 7: every card crosses on opening
+
+### Purpose
+Home's opening entrance carries every card across from its sender's side.
+
+### Constraints
+- The visual reference is the travelling-cards board https://claude.ai/artifact/JLyxbr7tdERmhwuMAimajW (built 2026-10-14) on top of the refined final canvas https://claude.ai/artifact/XpzsEF5ovaU7cB3wYp5bEi; light theme only; every token stays as in src/ui/theme.css.
+- Resting sides (the rule of this whole Request): a card rests on the side of whoever RECEIVED the money. A send's card lies wholly RIGHT of the centre line (Abbaas's side); a payment from Abbaas lies wholly LEFT of it (the owner's side). The row's data-side names that resting side: 'right' for a send, 'left' for a payment. The after line (data-after) lies on the other half, the side the card came from. The page is one centred column, so the centre line is the viewport's middle at every width.
+- The attribute contract integrated at 52ffbc4 stays: data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action, data-form, data-person-chip, data-prefix, data-usd, data-pill, data-row, data-ripple, data-spine, data-fade, data-motion and the entry sheet's attributes. Every existing acceptance spec not rewritten by this Request keeps passing.
+- Motion contract: any element displaced by a motion carries data-motion from before its first displaced frame until it rests; a reader that waits until no element carries data-motion reads the resting layout. A new or entering card carries data-motion='cross'.
+- This rewrites the oracle at tests/acceptance/entrances.spec.ts: every assertion it makes about the forms, storage and balances is kept; only what it asserts about which side a card lies on (and, where stated, how it moves) changes to this Request's rule. The form's ripple and rising rows are kept exactly as asserted today.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/motion.ts` | EXTEND | The opening crossing for each row, staggered 90 ms. |
+| `src/ui/home.ts` | EXTEND | animateOpening crosses every card. |
+| `src/ui/theme.css` | EXTEND | Start states for the opening crossing. |
+
+### Paradigm
+functional
+
+### Decisions
+- On the app's first Home, Home's root carries data-motion 'home-enter' as today; the boxes rise, the balance counts up from $0 and the data-spine line draws down as today.
+- Each entry card starts displaced by one card width plus the 36 px dot column toward its sender's side (negative x for a send, positive for a payment), so it starts wholly on the sender's half, and crosses to rest over 680 ms on the one curve, 90 ms after the card above it; each carries data-motion while it moves.
+- Everything rests within 2.2 s of the reload.
+- With reduced motion nothing carries data-motion or data-ripple and every card is at rest at once.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| enterHome | `src/ui/motion.ts:591` | EXTEND | The opening entrance; its card slides become crossings. |
+
+### Prefactoring
+Not applicable: Home and its motions are reshaped in place; no behaviour moves between modules.
+
+### Agreement analysis
+Not applicable: No schema or port change; the stored entry shape is unchanged.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home, its entry cards, its boxes and totals, and the Send and Receive forms.
+- Driven port: LedgerStore: people and entries over PostgREST under row-level security.
+- Dependency direction: UI modules depend on domain modules and port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: Reading the ledger fails because the server cannot be reached. | Outcome: Retry | Observation: Home shows 'Could not load the ledger. Try again.' and no entry cards, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Opening the app plays Home's entrance with every entry card crossing from its sender's side over the centre line to its resting side, one after another, after the boxes rise and the line draws down; with reduced motion every screen shows its end state at once.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in. The account is seeded with person Mariyam Nisha, a $500.00 USD send to her yesterday and a $200.00 USD payment today. Test A loads the app after sign-in by reloading Home and samples every animation frame until no element carries data-motion; then it taps Send and samples. Test B repeats both with reducedMotion 'reduce'.
+
+Expected: Test A: on the reload Home's root carries data-motion 'home-enter'; the abbaas box's displayed amount is below $300.00 at an early sample and reads $300.00 at the end; the data-spine element's transform starts with a Y scale below 1 and ends at none or scale 1; the send card's first sampled x translation is negative and at some visible sample (opacity above 0.5) its box lies wholly left of the viewport's middle, and at rest wholly right of it; the payment card's first sampled x translation is positive, at some visible sample its box lies wholly right of the middle, and at rest wholly left of it; within 2.2 s no data-motion remains. After tapping Send a data-ripple element appears near the Send button's centre, at least four data-row elements in the form have opacity below 1 at an early sample and reach opacity 1 in top-to-bottom order of their start, and within 1.2 s none remains below 1. Test B: no element ever carries data-motion or data-ripple; the abbaas box reads $300.00, the send card lies right of the middle and the payment card left of it, and every data-row has opacity 1 on the first sampled frame.
+
+Falsifier: No entrance on open, a card that does not start on its sender's half, a card that does not rest on its receiver's half, rows appearing all at once, or any motion under reduce fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/entrances.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
