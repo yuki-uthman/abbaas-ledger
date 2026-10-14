@@ -575,7 +575,13 @@ export const countBoxAmount = (box: HTMLElement, count: Count): void => {
     )
   }
   if (count.delayMs <= 0) start()
-  else window.setTimeout(start, count.delayMs)
+  else {
+    // While the count waits - a saved card holds on the sender's side before it
+    // crosses - the box still reads what it held before the save, so the new
+    // figure is never shown first and then counted up to again.
+    count.paint(amount, count.fromCents)
+    window.setTimeout(start, count.delayMs)
+  }
 }
 
 // ---------------------------------------------------------------------------
