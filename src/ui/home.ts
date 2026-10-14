@@ -6,9 +6,9 @@
 // them: balanceOf subtracts a receive, so the owner's box fills (unsigned, with
 // the caption 'have his money') and Abbaas's empties when a payment is larger
 // than he held, and the All square chip appears exactly at zero; a receive
-// renders beside a teal node with a left-pointing arrow, reads 'from Abbaas'
-// and carries no data-person. (Which side it is drawn on is settled by the
-// refined board, noted below.)
+// renders beside a teal node, reads 'from Abbaas' and carries no data-person.
+// (Which side it is drawn on is settled by the refined board, noted below, and
+// the node is a plain dot: travelling cards took the arrow off it.)
 //
 // The attribute contract this value fixes, and every later value keeps:
 //   - each entry element carries data-entry="<entries.id>"
@@ -37,9 +37,11 @@
 // file only draws what it returns.
 //
 // The refined board reshapes this screen and takes nothing from the contract
-// above, except that it settles which side each kind is drawn on: a send now
-// lies wholly LEFT of the centre line and a payment from Abbaas right of it,
-// each answered by its data-after across the line. Home carries no title, the
+// above, except that it settles which side each kind is drawn on. Travelling
+// cards then fixes that rule as the resting side of whoever RECEIVED the money:
+// a send's card lies wholly RIGHT of the centre line, on Abbaas's side, and a
+// payment from Abbaas wholly left of it, on the owner's; data-side names that
+// resting side and data-after answers it from the half the money came from. Home carries no title, the
 // two boxes are the top of the screen, and what this value adds to the contract
 // is:
 //   - the Entries count carries data-count and reads 'No entries', '1 entry' or
@@ -60,6 +62,9 @@
 // the entrance draws it down, and a pseudo-element cannot be named or measured.
 // Home is painted in its end state here as it always was, and the entrance only
 // travels to it, so reduced motion reads the same screen from the first frame.
+// Travelling cards makes the cards of that entrance cross the line rather than
+// settle in from their own side: every card, not only a saved one, arrives from
+// the half of whoever SENT the money and comes to rest on the receiver's.
 //
 // Refined board value 5 takes the save's words away and adds nothing: Home never
 // builds a Saved message or an Undo, so data-saved-message leaves the contract
@@ -85,8 +90,10 @@ import {
 import { formatMvrLaari, formatRate, formatUsdCents } from '../domain/money.js'
 import type { LedgerEntry, ReadEntriesOutcome } from '../ports/ledger-store.js'
 import {
+  CROSS_START_MS,
+  SAVE_COUNT_MS,
   countBoxAmount,
-  enterEntry,
+  crossEntry,
   enterHome,
   openDayGroup,
   type Opening,
@@ -117,18 +124,26 @@ const renderEntry = (listed: ListedEntry<LedgerEntry>): HTMLElement => {
   // card is what data-entry names.
   const element = document.createElement('li')
   element.className = 'entry'
-  // On the refined board a send is drawn on the LEFT of the centre line and a
-  // payment from Abbaas on the right - the other way about from version one.
-  // Which column each part takes is drawn from this in theme.css.
-  element.dataset.side = entry.kind === 'send' ? 'left' : 'right'
+  // Travelling cards: a card rests on the side of whoever RECEIVED the money.
+  // A send's card therefore lies wholly RIGHT of the centre line, on Abbaas's
+  // side, and a payment from Abbaas lies wholly left of it, on the owner's.
+  // data-side names that resting side, and nothing else: which column each part
+  // of the row takes is drawn from it in theme.css.
+  element.dataset.side = entry.kind === 'send' ? 'right' : 'left'
+  // What the card IS stays its kind, because its colour, its arrow and its ring
+  // belong to the money and not to the half it comes to rest in: a send is read
+  // in the owner's blue wherever it lies.
+  element.dataset.kind = entry.kind
 
-  // The round node on the line, an arrow pointing the way the money went.
+  // The node on the line: a small round dot in the card's own colour, and
+  // nothing else. Travelling cards takes the arrow away - which way the money
+  // went is already said by the side the card rests on and by its colour - so
+  // the dot carries no glyph and no text at all, and no row spells an arrow.
   const nodeCell = document.createElement('span')
   nodeCell.className = 'entry-node-cell'
   nodeCell.setAttribute('aria-hidden', 'true')
   const node = document.createElement('span')
   node.className = 'entry-node'
-  node.textContent = entry.kind === 'send' ? '→' : '←'
   nodeCell.append(node)
 
   const body = document.createElement('div')
@@ -306,7 +321,10 @@ const renderBalanceCard = (balance: Balance): HTMLElement => {
   const totals = document.createElement('p')
   totals.className = 'totals'
   // Each total reads as one sentence with its figure inked inside it, so the
-  // element still reads 'You sent $1,090.00' end to end.
+  // element still reads 'Abbaas received $1,090.00' end to end. Travelling cards
+  // names each total by who RECEIVED the money, the same rule the cards rest by:
+  // what the owner paid out was received by Abbaas, and what came back was
+  // received by the owner.
   const total = (which: 'sent' | 'paid', lead: string, cents: number): HTMLElement => {
     const element = document.createElement('span')
     element.dataset.total = which
@@ -317,9 +335,11 @@ const renderBalanceCard = (balance: Balance): HTMLElement => {
     element.append(figure)
     return element
   }
+  // What the owner received is on the left, under his own box, and what Abbaas
+  // received on the right, under his: the same halves the cards rest in.
   totals.append(
-    total('sent', 'You sent', balance.sentCents),
-    total('paid', 'He paid back', balance.paidBackCents),
+    total('paid', 'You received', balance.paidBackCents),
+    total('sent', 'Abbaas received', balance.sentCents),
   )
   card.append(totals)
 
@@ -428,7 +448,7 @@ const renderBottomBar = (): HTMLElement => {
 
 /**
  * What Home needs to know about a save that has just happened: which entry it
- * was, so that card arrives from its own side wearing its ring, and where the
+ * was, so that card crosses the line wearing its ring, and where the
  * boxes count from. Home itself holds no id.
  *
  * Refined board value 5 removes the Saved message and its Undo, so a save
@@ -436,7 +456,7 @@ const renderBottomBar = (): HTMLElement => {
  * own side is the whole of the feedback, and this carries no callback at all.
  */
 export type JustSaved = {
-  /** Which entry was saved: the one that arrives from its own side (value 9). */
+  /** Which entry was saved: the card that crosses the line wearing its ring. */
   readonly entryId: string
   /** The balance before the save: where the boxes count from (value 9). */
   readonly balanceBefore: Balance
@@ -452,7 +472,12 @@ export type JustSaved = {
  *
  * Which boxes move decides what the motion is called: one box changing is a
  * count of that box, and both changing means the money has crossed the line, so
- * the pair of them is one swap.
+ * the pair of them is one swap - his box draining as the owner's fills when a
+ * payment is larger than he holds.
+ *
+ * The new card is shown on the half the money came FROM and crosses the centre
+ * line to the half it rests in, which is the receiver's: the card and the money
+ * travel together, so the boxes start counting as the crossing begins.
  *
  * The ring the new card wears is not motion and so is drawn whatever this
  * device has asked for: it is how the card that has just been saved is told
@@ -470,7 +495,19 @@ const animateSave = (
   if (entry !== undefined && element !== null) {
     // The 2 px ring in the entry's own colour, which stays until the next screen.
     element.classList.add('entry-card-new')
-    enterEntry(element, entry.kind)
+    // It appears on the SENDER'S half and crosses the centre line to the half it
+    // rests in, which is the side of whoever received the money: data-side is
+    // already that side, so it is the whole of what the crossing needs to know.
+    // The dot on the line and the after line arrive once the card has landed.
+    const row = element.closest<HTMLElement>('.entry')
+    crossEntry({
+      card: element,
+      trailing:
+        row === null
+          ? []
+          : Array.from(row.querySelectorAll<HTMLElement>('.entry-node-cell, .entry-after')),
+      restsOn: row?.dataset.side === 'left' ? 'left' : 'right',
+    })
     // A day this entry is the first of opens its space, so the days under it
     // move down rather than jump. A day that already held entries has its space
     // and needs none made.
@@ -499,6 +536,10 @@ const animateSave = (
       fromCents: move.fromCents,
       toCents: move.toCents,
       name,
+      // The money moves with the card: the count starts as the crossing does and
+      // takes the same 800 ms whether one box counts or the two of them swap.
+      durationMs: SAVE_COUNT_MS,
+      delayMs: CROSS_START_MS,
       paint: paintBoxAmount,
     })
   }
@@ -512,6 +553,10 @@ const animateSave = (
  * just been built: which parts there are is this file's business, and how each
  * of them travels is motion.ts's.
  *
+ * Travelling cards makes every card of this entrance cross the centre line, the
+ * same one way a saved card reaches Home: each is handed over with the half it
+ * rests in - the side of whoever received the money - and starts on the other.
+ *
  * Only the holder's figure counts, because an empty box claims nothing and so
  * has nothing to count up to; at square neither box counts and the entrance is
  * the rest of it.
@@ -524,9 +569,12 @@ const animateOpening = (screen: HTMLElement, balance: Balance): void => {
   const cards = Array.from(screen.querySelectorAll<HTMLElement>('.entry')).flatMap((row) => {
     const card = row.querySelector<HTMLElement>('[data-entry]')
     if (card === null) return []
-    // The side it is drawn on is the side it arrives from.
-    const kind = row.dataset.side === 'left' ? ('send' as const) : ('receive' as const)
-    return [{ element: card, kind }]
+    // data-side is already the half it rests in - the side of whoever RECEIVED
+    // the money - which is the whole of what the crossing needs to know: it
+    // starts on the other half, its sender's, and travels over the line to this
+    // one.
+    const restsOn = row.dataset.side === 'left' ? ('left' as const) : ('right' as const)
+    return [{ element: card, restsOn }]
   })
 
   const holder = balance.holder === 'none' ? null : balance.holder
@@ -559,9 +607,10 @@ const animateOpening = (screen: HTMLElement, balance: Balance): void => {
 /* Refined board value 5: Home has no Saved message and no Undo, at any moment.
    Nothing here builds a data-saved-message element, a role=status save notice,
    the word 'Saved.' or a control named Undo, so there is no sentence to word
-   and no bar to raise. A save is answered by the new card alone: it arrives
-   from its own side of the centre line wearing the 2 px ring in its colour, the
-   boxes count to their new figures, and the stored row stays stored - which is
+   and no bar to raise. A save is answered by the new card alone: it is shown on
+   the sender's half wearing the 2 px ring in its colour, crosses the centre line
+   to rest on the receiver's half while the boxes count to their new figures, and
+   the stored row stays stored - which is
    why LedgerStore.removeEntry, still there for a later delete feature, is
    reached by nothing on this screen. */
 

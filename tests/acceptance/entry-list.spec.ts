@@ -9,15 +9,22 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, seedHistory, type Account, type EntrySeed } from '../support/accounts.js'
 
-// Refined board value 1: Home as on the refined board.
+// Travelling cards value 5: Home at rest.
 //
 // Judged through the declared public port only: the built bundle's DOM on Home,
 // through the attribute contract in force (data-box with data-state and
-// data-amount, data-square, data-total, data-day, data-entry, data-person,
-// data-after) and this value's own additions (data-count, data-cents, data-fade).
+// data-amount, data-square, data-total, data-count, data-day, data-entry,
+// data-person, data-after, data-side, data-cents, data-fade, data-motion).
 //
-// This replaces version one's entry-list oracle at the same path: sends now lie
-// LEFT of the centre line and payments right of it.
+// This rewrites the refined board's entry-list oracle at the same path. Every
+// assertion about the forms, storage and balances is kept; what changes is which
+// side a card rests on. A card rests on the side of whoever RECEIVED the money:
+// a send lies wholly RIGHT of the centre line (Abbaas's side) and a payment from
+// Abbaas lies wholly LEFT of it (the owner's side), with the after line on the
+// other half, the side the card came from. Each row's node on the line is a
+// round dot in its card's colour and carries no arrow glyph, so no row spells
+// an arrow character. The totals read 'You received $…' on the left and
+// 'Abbaas received $…' on the right.
 
 const PASSWORD_FIELD = 'input[type="password"]'
 
@@ -109,6 +116,11 @@ const DAYS: readonly string[] = [TODAY, MIDDLE_DAY, EARLIEST_DAY]
 // +25000, +50000, -30000, +34000, so it ends at 79000.
 const SEND_TINT = 'rgba(36, 80, 138, 0.1)'
 const PAYMENT_TINT = 'rgba(15, 111, 104, 0.11)'
+
+// A card rests on the side of whoever received the money, and that resting side
+// is what the row's data-side names.
+const restingSide = (kind: 'send' | 'payment'): 'left' | 'right' =>
+  kind === 'send' ? 'right' : 'left'
 
 const ENTRIES: readonly {
   readonly day: string
@@ -217,7 +229,7 @@ const styleOf = (locator: Locator, property: string): Promise<string> =>
     property,
   )
 
-test('Home is the refined board: no title, boxes on top, an Entries count, sends left of the line, payments right, and a fade above the buttons', async ({
+test('Home at rest is the travelling-cards board: no title, boxes on top, an Entries count, sends right of the line and payments left at every width, a dot and no arrow on each row, and the received totals under the boxes', async ({
   page,
 }) => {
   await signIn(page)
@@ -305,10 +317,26 @@ test('Home is the refined board: no title, boxes on top, an Entries count, sends
   expect(sizes.amount, 'the filled amount is 34 px').toBeCloseTo(34, 0)
   expect(sizes.cents, 'its cents are half that').toBeCloseTo(sizes.amount / 2, 0)
 
-  // ----- The totals, and the Entries heading with its count. -----
-  await expect(page.locator('[data-total="sent"]')).toHaveText('You sent $1,090.00')
-  await expect(page.locator('[data-total="paid"]')).toHaveText('He paid back $300.00')
+  // ----- The totals, named by who received the money: You received on the left,
+  // ----- Abbaas received on the right. -----
+  const paidTotal = page.locator('[data-total="paid"]')
+  const sentTotal = page.locator('[data-total="sent"]')
+  await expect(paidTotal).toHaveText('You received $300.00')
+  await expect(sentTotal).toHaveText('Abbaas received $1,090.00')
   expect(109000 - 30000, 'the totals differ by the balance in the box').toBe(79000)
+
+  const paidTotalBox = await boxOf(paidTotal, 'the You received total')
+  const sentTotalBox = await boxOf(sentTotal, 'the Abbaas received total')
+  expect(
+    paidTotalBox.x + paidTotalBox.width,
+    'You received stands left of Abbaas received',
+  ).toBeLessThanOrEqual(sentTotalBox.x + 1)
+  expect(
+    Math.abs(
+      paidTotalBox.y + paidTotalBox.height / 2 - (sentTotalBox.y + sentTotalBox.height / 2),
+    ),
+    'both totals share one row',
+  ).toBeLessThanOrEqual(Math.max(paidTotalBox.height, sentTotalBox.height))
 
   const entriesHeading = page.getByRole('heading', { level: 2, name: 'Entries' })
   await expect(entriesHeading).toBeVisible()
@@ -353,10 +381,27 @@ test('Home is the refined board: no title, boxes on top, an Entries count, sends
     'an older day is not marked Today',
   ).not.toContain('TODAY')
 
-  // ----- The entries: tinted cards, sends left of the line, payments right, with
-  // ----- the after-balance on the other side. -----
+  // ----- The entries: tinted cards resting on the receiver's side, sends right of
+  // ----- the line and payments left, with the after-balance on the other half,
+  // ----- the side the card came from. -----
   const entries = page.locator('[data-entry]')
   await expect(entries).toHaveCount(ENTRIES.length)
+
+  // Each row names its resting side, newest first.
+  const sides = page.locator('[data-side]')
+  await expect(sides).toHaveCount(ENTRIES.length)
+  expect(
+    await sides.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-side'))),
+    'each row names the side of whoever received the money',
+  ).toEqual(ENTRIES.map((entry) => restingSide(entry.kind)))
+
+  // The node on the line is a dot, never an arrow: no day group, which holds its
+  // own rows and their node cells, spells an arrow character.
+  for (const date of DAYS) {
+    const groupText = squashed(await page.locator(`[data-day="${date}"]`).innerText())
+    expect(groupText, `the ${date} rows carry no right arrow`).not.toContain('→')
+    expect(groupText, `the ${date} rows carry no left arrow`).not.toContain('←')
+  }
 
   // The after-balances read down the list in the same newest-first order; they
   // carry data-after and sit beside their card, not on it.
@@ -389,31 +434,37 @@ test('Home is the refined board: no title, boxes on top, an Entries count, sends
       `entry ${index} card tint`,
     ).toBe(expected.tint)
 
-    // Each card lies wholly on its own half of the list.
+    // Each card rests wholly on the side of whoever received the money: a send on
+    // Abbaas's right half, a payment from Abbaas on the owner's left half.
     const cardBox = await boxOf(card, `entry ${index} card`)
     if (isSend) {
-      expect(cardBox.x + cardBox.width, `send ${index} lies wholly left of the line`).toBeLessThanOrEqual(
+      expect(cardBox.x, `send ${index} rests wholly right of the line`).toBeGreaterThanOrEqual(
         centre,
       )
     } else {
-      expect(cardBox.x, `payment ${index} lies wholly right of the line`).toBeGreaterThanOrEqual(centre)
+      expect(
+        cardBox.x + cardBox.width,
+        `payment ${index} rests wholly left of the line`,
+      ).toBeLessThanOrEqual(centre)
     }
 
-    // Its after-balance sits in the same row, on the opposite half.
+    // Its after-balance sits in the same row, on the other half: the side the card
+    // came from.
     const afterText = afters.nth(index)
     expect(squashed(await afterText.innerText()), `entry ${index} after text`).toBe(
       expected.afterText,
     )
     const afterBox = await boxOf(afterText, `entry ${index} after text`)
     if (isSend) {
-      expect(afterBox.x, `send ${index} shows its balance right of the line`).toBeGreaterThanOrEqual(
-        centre,
-      )
-    } else {
       expect(
         afterBox.x + afterBox.width,
-        `payment ${index} shows its balance left of the line`,
+        `send ${index} shows its balance left of the line, the side it came from`,
       ).toBeLessThanOrEqual(centre)
+    } else {
+      expect(
+        afterBox.x,
+        `payment ${index} shows its balance right of the line, the side it came from`,
+      ).toBeGreaterThanOrEqual(centre)
     }
     // Card and balance share the row.
     expect(
@@ -453,8 +504,12 @@ test('Home is the refined board: no title, boxes on top, an Entries count, sends
   await expect(page.locator('[data-action="send"]')).toBeVisible()
   await expect(page.locator('[data-action="receive"]')).toBeVisible()
 
-  // ----- The sizes hold from 360 px to the 560 px column, with no sideways scroll. -----
-  for (const width of [360, 414, 560, 1024]) {
+  // ----- The sides hold at every width from 360 px, with no sideways scroll. -----
+  // The entries that carry the rule: index 0 is today's send, index 1 the payment.
+  expect(ENTRIES[0]!.kind, 'the newest entry is a send').toBe('send')
+  expect(ENTRIES[1]!.kind, 'the next entry is a payment').toBe('payment')
+
+  for (const width of [360, 414, 560, 800, 1024]) {
     await page.setViewportSize({ width, height: 844 })
     // A relayout may re-run an entrance; measure the resting board only.
     await settled(page)
@@ -466,14 +521,28 @@ test('Home is the refined board: no title, boxes on top, an Entries count, sends
       scroll.clientWidth,
     )
 
-    // Sends stay on their own side at every width.
+    // Each card stays on its receiver's side at every width.
     // The column is centred at every width, so the centre line is the page's middle.
     const line = scroll.clientWidth / 2
-    const firstSend = entries.first()
-    const sendBox = await boxOf(firstSend, `the newest send at ${width} px`)
-    expect(sendBox.x + sendBox.width, `the send stays left of the line at ${width} px`).toBeLessThanOrEqual(
-      line,
-    )
+    const sendBox = await boxOf(entries.nth(0), `the newest send at ${width} px`)
+    expect(sendBox.x, `the send stays right of the line at ${width} px`).toBeGreaterThanOrEqual(line)
+    const paymentBox = await boxOf(entries.nth(1), `the payment at ${width} px`)
+    expect(
+      paymentBox.x + paymentBox.width,
+      `the payment stays left of the line at ${width} px`,
+    ).toBeLessThanOrEqual(line)
+
+    // And each after line stays on the half its card came from.
+    const sendAfterBox = await boxOf(afters.nth(0), `the send's balance at ${width} px`)
+    expect(
+      sendAfterBox.x + sendAfterBox.width,
+      `the send's balance stays left of the line at ${width} px`,
+    ).toBeLessThanOrEqual(line)
+    const paymentAfterBox = await boxOf(afters.nth(1), `the payment's balance at ${width} px`)
+    expect(
+      paymentAfterBox.x,
+      `the payment's balance stays right of the line at ${width} px`,
+    ).toBeGreaterThanOrEqual(line)
   }
   await page.setViewportSize(viewport)
   await settled(page)

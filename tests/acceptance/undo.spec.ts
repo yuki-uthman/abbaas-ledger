@@ -9,7 +9,8 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, readEntries, seedUsdSend, type Account } from '../support/accounts.js'
 
-// Refined board value 5: no Saved message and no Undo after a save.
+// Travelling cards value 4: no Saved message and no Undo after a save; the ringed card
+// at rest on the RECEIVER's side is the whole feedback.
 //
 // Judged through the declared public port only: the built bundle's DOM on the Home a
 // save reaches (no data-saved-message element, no role=status save message, no 'Saved.'
@@ -155,7 +156,13 @@ test('after a save Home shows no Saved message and no Undo: the ringed card on i
   await page.getByLabel('Amount sent').fill(SEND_AMOUNT)
   await page.getByRole('button', { name: SEEDED_PERSON }).click()
   await page.getByRole('button', { name: SEND_BUTTON }).click()
+  // The save has been answered by Home before anything is read: the form has left the
+  // DOM and the new card is present. Only then is the board waited into rest — waiting
+  // for rest before the store answers would pass in the gap where nothing has begun to
+  // travel yet, and the card would be read mid-crossing, on the half it only holds on.
   await expect(sendForm).toHaveCount(0)
+  await expect(entries).toHaveCount(2)
+  await expect(cardWith(page, '$100.00')).toBeVisible()
   // Home grows from the button, the card arrives and the balance counts.
   await settled(page)
 
@@ -165,12 +172,14 @@ test('after a save Home shows no Saved message and no Undo: the ringed card on i
   await expect(abbaasBox).toHaveAttribute('data-amount', String(AFTER_SEND_CENTS))
   await expect(abbaasBox).toContainText('$500.00')
 
-  // The new card wears the ring in the send's colour and sits on the sends' half.
+  // The new card wears the ring in the send's colour and rests on the side of whoever
+  // received the money: a send's receiver is Abbaas, so the card lies wholly RIGHT of
+  // the centre line, which is the viewport's middle at every width.
   const sendCard = cardWith(page, '$100.00')
   await expect(sendCard).toHaveCount(1)
   expect(await hasRing(sendCard, SEND_INK), 'the new send card wears its 2 px ring').toBe(true)
   const sendRect = await boxOf(sendCard)
-  expect(sendRect.x + sendRect.width).toBeLessThanOrEqual(VIEWPORT.width / 2)
+  expect(sendRect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
 
   // The seeded send, which this save did not touch, wears no ring.
   const seededCard = cardWith(page, '$400.00')
@@ -186,7 +195,11 @@ test('after a save Home shows no Saved message and no Undo: the ringed card on i
   await settled(page)
   await page.getByLabel('Amount received').fill(RECEIVE_AMOUNT)
   await page.getByRole('button', { name: RECEIVE_BUTTON }).click()
+  // Again: the save is answered by Home first (form gone, the new card present), and
+  // only then is rest awaited and any side, ring, box or count read.
   await expect(receiveForm).toHaveCount(0)
+  await expect(entries).toHaveCount(3)
+  await expect(cardWith(page, '$50.00')).toBeVisible()
   await settled(page)
 
   // ----- Again no message and no Undo, and the payment's own ring and side. -----
@@ -200,8 +213,10 @@ test('after a save Home shows no Saved message and no Undo: the ringed card on i
   expect(await hasRing(paymentCard, PAYMENT_INK), 'the new payment card wears its ring').toBe(
     true,
   )
+  // A payment from Abbaas is received by the owner, so its card lies wholly LEFT of the
+  // centre line.
   const paymentRect = await boxOf(paymentCard)
-  expect(paymentRect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
+  expect(paymentRect.x + paymentRect.width).toBeLessThanOrEqual(VIEWPORT.width / 2)
 
   // The previous save's card has handed its ring on.
   expect(await hasRing(sendCard, SEND_INK), 'the ring belongs to the newest save only').toBe(
@@ -212,6 +227,9 @@ test('after a save Home shows no Saved message and no Undo: the ringed card on i
 
   // ===== A reload: the entries are stored, with no message and no ring. =====
   await page.reload()
+  // The reloaded Home has to have been answered by the store before rest is awaited,
+  // for the same reason: an empty Home carries nothing travelling.
+  await expect(entries).toHaveCount(3)
   // A fresh Home counts its balance up from $0; read it only once it has arrived.
   await settled(page)
   await expectNoSaveMessageOrUndo(page)

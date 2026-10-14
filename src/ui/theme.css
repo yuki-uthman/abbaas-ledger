@@ -235,7 +235,9 @@ body {
   font-weight: 600;
 }
 
-/* One row: what was sent at the left, what came back at the right. */
+/* One row, named by who received the money and laid out in the halves the cards
+   rest in: 'You received' at the left, under the owner's box, and 'Abbaas
+   received' at the right, under his. */
 .totals {
   display: flex;
   justify-content: space-between;
@@ -245,10 +247,25 @@ body {
   color: var(--muted);
 }
 
-/* The sentence is soft and the figure in it is not: only the amount is inked. */
+/* The sentence is soft and the figure in it is not: only the amount is inked,
+   and in the colour of whoever received it - what came back to the owner in
+   Abbaas's teal, what went out to Abbaas in the owner's blue - so each total is
+   read in the same ink as the cards of the money it counts. */
 .totals .totals-figure {
-  color: var(--ink);
   font-weight: 700;
+}
+
+.totals [data-total='paid'] .totals-figure {
+  color: var(--abbaas);
+}
+
+.totals [data-total='sent'] .totals-figure {
+  color: var(--you);
+}
+
+/* Abbaas's total reads from the right edge of its half, as his box does. */
+.totals [data-total='sent'] {
+  text-align: right;
 }
 
 /* --- The Entries heading and its count, on one row under the totals. --- */
@@ -362,8 +379,9 @@ body {
 }
 
 /* --- The entry list on the refined board: a centre line with tinted cards
-       beside it, sends on the LEFT and payments from Abbaas on the right, each
-       answered across the line by what it leaves behind. --- */
+       beside it, each resting on the side of whoever RECEIVED the money - sends
+       on the RIGHT, Abbaas's side, payments from him on the left, the owner's -
+       and each answered across the line by what it leaves behind. --- */
 
 .home ul[data-entries] {
   list-style: none;
@@ -374,8 +392,8 @@ body {
 }
 
 /* The centre line runs down the middle of the list. Entries sit beside it,
-   never across it: a send wholly in the left half, a payment from Abbaas wholly
-   in the right half.
+   never across it: a send wholly in the right half, on Abbaas's side, and a
+   payment from Abbaas wholly in the left half, on the owner's.
 
    It is an element of its own rather than a pseudo-element, because the opening
    entrance draws it down from its top and nothing can name or measure a
@@ -383,10 +401,11 @@ body {
    labels still sit astride it. */
 .entries-area {
   position: relative;
-  /* A card arriving from its own side starts 28 px out, which on a 360 px screen
-     would reach past the screen's edge and widen the page for the frames it is
-     travelling. Clipped here, the card is cut at the list's own edge instead, so
-     no frame of the entrance can scroll sideways.
+  /* Every card crosses the line from a whole half away - the entrance's as much
+     as a saved one's - which reaches past the screen's edge and would widen the
+     page for the frames it is travelling. Clipped
+     here, a travelling card is cut at the list's own edge instead, so no frame
+     of an entrance or a crossing can scroll sideways.
 
      clip and not hidden, and on the one axis only: hidden would make this a
      scroll container vertically too, which would trap the page's own scrolling
@@ -409,7 +428,7 @@ body {
 }
 
 /* Three parts across the full width: the card on its own half, the node column
-   straddling the centre line, and the after-balance on the other half. Each
+   holding its dot on the centre line, and the after-balance on the other half. Each
    card therefore lies wholly on its own side of the line at every width. */
 .entry {
   display: grid;
@@ -432,18 +451,28 @@ body {
   border-radius: 14px;
 }
 
-/* A send is drawn on the left of the line and reads from the left; a payment
-   from Abbaas is drawn on the right and reads from the right. */
+/* Which half the card lies in is its resting side - the side of whoever
+   received the money - and it reads from that half's own outer edge: a send
+   rests right, on Abbaas's side, and reads from the right. */
 .entry[data-side='left'] .entry-card {
   grid-column: 1;
-  background: var(--you-card);
   text-align: left;
 }
 
 .entry[data-side='right'] .entry-card {
   grid-column: 3;
-  background: var(--abbaas-card);
   text-align: right;
+}
+
+/* The tint belongs to the money, not to the half it came to rest in: a send is
+   read in the owner's blue and a payment back in Abbaas's teal, whichever side
+   of the line each of them lies on. */
+.entry[data-kind='send'] .entry-card {
+  background: var(--you-card);
+}
+
+.entry[data-kind='receive'] .entry-card {
+  background: var(--abbaas-card);
 }
 
 .entry-node-cell {
@@ -453,23 +482,25 @@ body {
   justify-content: center;
 }
 
+/* The node on the line is a 10 px dot and nothing more: no arrow is drawn on it,
+   because which way the money went is said by the half its card rests in. The
+   4 px halo in the page's own colour is what lifts it off the centre line it is
+   centred on, so the line reads as passing behind the dot rather than through
+   it. */
 .entry-node {
   flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  font-size: 14px;
+  box-shadow: 0 0 0 4px var(--page);
 }
 
-.entry[data-side='left'] .entry-node {
+/* The dot and the figure, like the tint, are the money's own colour. */
+.entry[data-kind='send'] .entry-node {
   background: var(--you);
 }
 
-.entry[data-side='right'] .entry-node {
+.entry[data-kind='receive'] .entry-node {
   background: var(--abbaas);
 }
 
@@ -479,11 +510,11 @@ body {
   font-weight: 800;
 }
 
-.entry[data-side='left'] .entry-amount {
+.entry[data-kind='send'] .entry-amount {
   color: var(--you);
 }
 
-.entry[data-side='right'] .entry-amount {
+.entry[data-kind='receive'] .entry-amount {
   color: var(--abbaas);
 }
 
@@ -529,8 +560,9 @@ body {
 }
 
 /* The standing after an entry reads across the line from the money that caused
-   it: a send on the right is answered on the left, and a repayment the other
-   way about. It is taken out of the flow so it can never widen either half. */
+   it: a send resting on the right is answered on the left, and a payment back
+   the other way about. It takes its own column of the row's three, so it can
+   never widen the half the card lies in. */
 .entry-after {
   align-self: center;
   min-width: 0;
@@ -539,15 +571,18 @@ body {
   font-weight: 600;
 }
 
-/* A send on the left is answered on the right, and a payment the other way. */
+/* The after line lies in the other half - the half the card came from - and is
+   aligned toward the line, so it hugs the centre rather than drifting out to
+   the page's edge: a send resting right is answered in the left column, read
+   from its right. */
 .entry[data-side='left'] .entry-after {
   grid-column: 3;
-  text-align: right;
+  text-align: left;
 }
 
 .entry[data-side='right'] .entry-after {
   grid-column: 1;
-  text-align: left;
+  text-align: right;
 }
 
 .entry-after[data-after-holder='abbaas'] {
@@ -1445,22 +1480,9 @@ body {
   will-change: transform, opacity, clip-path;
 }
 
-/* The new entry arrives from 44 px toward its own side. Where it starts and
-   where it settles are set as inline styles by motion.ts; the time it takes and
-   the curve it travels are declared here, once, with every other entrance.
-
-   The transition hangs on the travelling phase alone. The entry carries
-   data-motion="enter" from the moment it is first held back - the whole of the
-   520 ms the circle takes to fill the screen, because only once Home is whole
-   does the entry travel - so that it never sits displaced without declaring
-   itself; were the
-   transition live during that hold, the entry would animate INTO its start
-   state - fading out and sliding away - instead of simply being put there. */
-.entry[data-motion='enter'][data-enter='travel'] {
-  transition:
-    transform var(--enter-ms) var(--curve),
-    opacity var(--enter-ms) var(--curve);
-}
+/* A new entry used to settle in place from 44 px toward its own side. It now
+   crosses the centre line instead, which is declared with the rest of the
+   crossing further down, so no second entrance for an entry is declared here. */
 
 /* --- Home growing from the save button of the form it was saved from. ---
 
@@ -1509,20 +1531,82 @@ body {
 /* The card that has just been saved wears a 2 px ring in its own kind's colour,
    and keeps it until the next screen: since value 5 took the Saved message and
    its Undo away, this ring and the card's arrival from its own side are the
-   whole of what a save says.
+   whole of what a save says - and travelling cards makes that arrival the
+   crossing of the centre line, declared below.
+
+   Value 4 reads that sentence back the other way about: the ringed card AT REST
+   ON THE RECEIVER'S SIDE is the whole feedback. The side it rests on is the one
+   .entry[data-side] already places it in above - a send wholly right of the
+   centre line, on Abbaas's side, a payment from him wholly left, on the owner's -
+   so this value asks nothing new of the ring or of the halves. No message rises
+   beside either of them, and no reload keeps the ring: it is put on by the class
+   the save adds and nothing in a fresh Home adds it.
 
    It is an INSET box-shadow rather than a border or an outline. A border would
    move everything inside the card by its own width; an outline is drawn outside
    the card's edge, and the list clips itself horizontally (.entries-area), so
    the outer edges of the ring on a card that reaches the list's own edge would
    be cut off. An inset shadow is painted inside the card, so the ring is whole
-   on both sides of every card and nothing in it has moved. */
-.entry[data-side='left'] .entry-card.entry-card-new {
-  box-shadow: inset 0 0 0 2px var(--you);
+   on both sides of every card and nothing in it has moved.
+
+   The second, transparent layer is the lift the travelling card wears while it
+   crosses, at rest: a shadow of no size and no colour. It is declared here so
+   that the lifted shadow and this resting one are the same two layers, which is
+   what lets the lift settle as the card lands instead of snapping off it. */
+.entry[data-kind='send'] .entry-card.entry-card-new {
+  box-shadow: inset 0 0 0 2px var(--you), 0 0 0 rgba(13, 31, 28, 0);
 }
 
-.entry[data-side='right'] .entry-card.entry-card-new {
-  box-shadow: inset 0 0 0 2px var(--abbaas);
+.entry[data-kind='receive'] .entry-card.entry-card-new {
+  box-shadow: inset 0 0 0 2px var(--abbaas), 0 0 0 rgba(13, 31, 28, 0);
+}
+
+/* --- Travelling cards: the new card crossing the centre line. ---
+
+   Where the card starts, holds and rests is set as inline styles by motion.ts -
+   it is the card's own width that decides how far out it begins, and only a
+   measurement can know that - while how long each part of the journey takes, and
+   the curve it travels on, are declared here with every other motion in the app.
+
+   Each rule hangs on a travelling phase alone. Nothing hangs on the held phase,
+   which is what makes the card simply BE on the sender's half, displaced and
+   invisible, rather than animate into it. */
+
+/* Fading in where it starts, growing to its own size as it does. */
+[data-cross='appear'] {
+  transition:
+    transform 240ms var(--curve),
+    opacity 240ms var(--curve);
+}
+
+/* The crossing itself, over which the lift it was holding under settles. */
+[data-cross='cross'] {
+  transition:
+    transform 760ms var(--curve),
+    box-shadow 760ms var(--curve);
+}
+
+/* The dot on the line and the after line, which arrive once it has landed. */
+[data-cross='arrive'] {
+  transition: opacity 200ms var(--curve);
+}
+
+/* The parts that are moving are the ones that claim the compositor. */
+[data-cross] {
+  will-change: transform, opacity;
+}
+
+/* Lifted off the page while it waits on the sender's half: the ring it already
+   wears, and a soft shadow under it. The crossing rule above carries the card
+   back to its resting pair of layers, so the lift settles as the card lands. */
+.entry[data-kind='send'] .entry-card.entry-card-new[data-cross='held'],
+.entry[data-kind='send'] .entry-card.entry-card-new[data-cross='appear'] {
+  box-shadow: inset 0 0 0 2px var(--you), 0 10px 24px rgba(13, 31, 28, 0.18);
+}
+
+.entry[data-kind='receive'] .entry-card.entry-card-new[data-cross='held'],
+.entry[data-kind='receive'] .entry-card.entry-card-new[data-cross='appear'] {
+  box-shadow: inset 0 0 0 2px var(--abbaas), 0 10px 24px rgba(13, 31, 28, 0.18);
 }
 
 /* A day the new entry is the first of opens its own space, so the older days
@@ -1572,11 +1656,14 @@ body {
   transition: transform 640ms var(--curve);
 }
 
-/* Each card arrives from its own side of the line. */
+/* Each card CROSSES the line, from the half of whoever sent the money to the
+   half it rests in: a whole card's width plus the dot column, over 680 ms on the
+   one curve, 90 ms after the card above it. Only transform travels - the card is
+   readable on its sender's half from its first frame, so what the eye follows is
+   the journey and not a fade - and the start state it travels from is set, as a
+   percentage of the card's own width, by motion.ts. */
 [data-enter-rise='card'][data-enter-phase='travel'] {
-  transition:
-    transform 420ms var(--curve),
-    opacity 320ms var(--curve);
+  transition: transform 680ms var(--curve);
 }
 
 /* The totals and the Entries heading stay where they are and simply arrive. */

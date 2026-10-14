@@ -15,15 +15,16 @@ import {
   type Account,
 } from '../support/accounts.js'
 
-// Refined board value 2: the send form as on the refined board, in USD.
+// Travelling cards value 1: a send rests on Abbaas's side.
 //
 // Judged through the declared public port only: the built bundle's DOM (the Send
 // button, the blue form's labelled fields and contract attributes, Home's centre
 // line and balance boxes) and, outside the browser, the rows the app stored.
 //
-// This replaces version one's send oracle: the save button is now 'Send · $X',
-// the form carries no note field and no after-saving preview, and a send lands
-// LEFT of the centre line.
+// Everything this oracle said about the form, the storage and the balances is
+// kept. What changes is the resting side: a card rests on the side of whoever
+// RECEIVED the money, so a send's card lies wholly RIGHT of the centre line, on
+// Abbaas's side, and its row names that side with data-side='right'.
 
 const PASSWORD_FIELD = 'input[type="password"]'
 // The refined board is drawn at 390 by 844; the shared config's phone is version
@@ -101,11 +102,20 @@ const openSendForm = async (page: Page): Promise<Locator> => {
 const sendButton = (page: Page, dollars: string): Locator =>
   page.getByRole('button', { name: `Send · ${dollars}`, exact: true })
 
-/** A card lies wholly on one half of the list, judged on the centre line. */
-const expectWhollyLeft = async (card: Locator): Promise<void> => {
+/**
+ * A send's card rests on Abbaas's side: wholly in the right half, judged on the
+ * centre line, which is the viewport's middle because the page is one centred
+ * column. Its row names that resting side with data-side='right'.
+ */
+const expectRestingRight = async (card: Locator): Promise<void> => {
   const rect = await card.boundingBox()
   if (!rect) throw new Error('An entry card has no layout box')
-  expect(rect.x + rect.width).toBeLessThanOrEqual(VIEWPORT.width / 2)
+  expect(rect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
+
+  const side = await card.evaluate(
+    (node) => node.closest('[data-side]')?.getAttribute('data-side') ?? null,
+  )
+  expect(side).toBe('right')
 }
 
 /**
@@ -130,7 +140,7 @@ const expectBox = async (
   await expect(box).toHaveAttribute('data-amount', cents)
 }
 
-test('the refined blue send form records a USD send to a saved and to a new person, left of the centre line', async ({
+test("the blue send form records a USD send to a saved and to a new person, resting right of the centre line on Abbaas's side", async ({
   page,
 }) => {
   await signIn(page)
@@ -216,7 +226,7 @@ test('the refined blue send form records a USD send to a saved and to a new pers
   await expect(save).toBeEnabled()
   await save.click()
 
-  // ----- Home: the card sits wholly in the LEFT half of the centre line. -----
+  // ----- Home: the card rests wholly in the RIGHT half, Abbaas's side. -----
   await expect(page.locator('[data-form="send"]')).toHaveCount(0)
   const entries = page.locator('[data-entry]')
   await expect(entries).toHaveCount(1)
@@ -226,7 +236,7 @@ test('the refined blue send form records a USD send to a saved and to a new pers
   await expect(first).toContainText('$250.00')
   await expect(first).toContainText(SAVED_PERSON)
   await expect(first.locator('[data-person]')).toHaveCount(1)
-  await expectWhollyLeft(first)
+  await expectRestingRight(first)
 
   // ----- The balance is unsigned, in Abbaas's box, captioned for him. -----
   await expectBox(page, 'abbaas', 'filled', '25000')
@@ -268,7 +278,7 @@ test('the refined blue send form records a USD send to a saved and to a new pers
   await expect(entries).toHaveCount(2)
   await settled(page)
   for (let index = 0; index < 2; index += 1) {
-    await expectWhollyLeft(entries.nth(index))
+    await expectRestingRight(entries.nth(index))
   }
   await expectBox(page, 'abbaas', 'filled', '35000')
   await expect(abbaasBox).toContainText('$350.00')

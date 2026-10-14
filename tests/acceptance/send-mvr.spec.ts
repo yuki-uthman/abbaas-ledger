@@ -90,6 +90,21 @@ const atRest = async (page: Page): Promise<void> => {
 }
 
 /**
+ * A save is answered by Home, not by the tap. Between the tap and the store's
+ * reply nothing is displaced yet, so no element carries data-motion and a bare
+ * rest wait would pass at once, while the new card is still in its appear/hold/
+ * cross on the sender's half. So every save first waits for the answer to have
+ * arrived - the form has left the DOM AND the new card is present, counted by
+ * data-entry - and only then for every displaced element to have come to rest.
+ * Only after both may a side, ring, box or count be read.
+ */
+const atRestAfterSave = async (page: Page, expectedEntries: number): Promise<void> => {
+  await expect(page.locator('[data-form="send"]')).toHaveCount(0)
+  await expect(page.locator('[data-entry]')).toHaveCount(expectedEntries)
+  await atRest(page)
+}
+
+/**
  * The currency pill slides for 300 ms under its own transition, which carries no
  * data-motion marker, so its rectangle is read only once it holds still across
  * two consecutive animation frames.
@@ -207,22 +222,29 @@ test('MVR slides the pill and opens the rate card beside In dollars, and the wor
   await expect(save).toBeEnabled()
   await save.click()
 
-  // ----- Home: the card reads its detail under its USD amount, left of the line. -----
-  await expect(page.locator('[data-form="send"]')).toHaveCount(0)
+  // ----- Home: the card reads its detail under its USD amount, right of the line. -----
+  // The save is first waited for to have been answered by Home (the form gone
+  // and the new card present), and only then for the Saved message, Home's
+  // growth, the counting balance and the card's crossing to have come to rest.
+  // Nothing below is read before both.
+  await atRestAfterSave(page, 1)
+
   const entries = page.locator('[data-entry]')
-  await expect(entries).toHaveCount(1)
-
-  // The Saved message rises 18 px, Home grows in, the balance counts up from $0
-  // and the entry slides 28 px from its side; read only once all of that is done.
-  await atRest(page)
-
   const entry = entries.first()
   await expect(entry).toContainText('$500.00')
   await expect(entry).toContainText('MVR 10,000 at 20.00')
   await expect(entry).toContainText(SAVED_PERSON)
+
+  // A send's card rests on Abbaas's side: the money was received by him, so the
+  // card names that side and lies wholly right of the centre line, which at this
+  // one centred column is the middle of the viewport.
+  // One entry is on the board, so there is exactly one row naming a side.
+  const sideRow = page.locator('[data-side]')
+  await expect(sideRow).toHaveCount(1)
+  await expect(sideRow).toHaveAttribute('data-side', 'right')
   const rect = await entry.boundingBox()
   if (!rect) throw new Error('The saved entry has no layout box')
-  expect(rect.x + rect.width).toBeLessThanOrEqual(VIEWPORT.width / 2)
+  expect(rect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
 
   const abbaasBox = page.locator('[data-box="abbaas"]')
   await expect(abbaasBox).toHaveAttribute('data-state', 'filled')

@@ -9,19 +9,30 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, seedHistory, type Account } from '../support/accounts.js'
 
-// Refined board value 7: the entrances. Opening the app plays Home's entrance - the
-// boxes rise, the balance counts up from $0, the centre line draws down and the
-// entries slide in from their own sides - and opening a form ripples the tapped
-// button and rises the form's rows in one after another. With prefers-reduced-motion
-// none of it runs and every screen shows its end state from the first frame.
+// Travelling cards value 7: every card crosses on opening. Opening the app plays
+// Home's entrance - the boxes rise, the balance counts up from $0, the centre line
+// draws down and then every entry card CROSSES the centre line, from the side of
+// whoever SENT the money to the side of whoever RECEIVED it, one after another - and
+// opening a form ripples the tapped button and rises the form's rows in one after
+// another. With prefers-reduced-motion none of it runs and every screen shows its end
+// state from the first frame.
 //
 // Judged through the declared public port only: the built bundle's DOM OVER TIME, at
 // the refined board's 390 by 844 viewport, with and without reduced motion. The
 // oracle reads nothing but the attributes the design fixed - data-motion
-// ('home-enter' on Home's root while the entrance runs), data-spine on the centre
-// line, data-ripple on the tap ripple, data-row on a form's rows - and the computed
-// transform and opacity of the elements those attributes name, plus the box text and
-// data-amount of version one's contract. No new attribute is introduced here.
+// ('home-enter' on Home's root while the entrance runs, 'cross' on a card while it
+// travels), data-spine on the centre line, data-ripple on the tap ripple, data-row on
+// a form's rows - and the computed transform and opacity and the layout box of the
+// elements those attributes name, plus the box text and data-amount of version one's
+// contract. No new attribute is introduced here.
+//
+// The resting-side rule of this Request: a card rests on the side of whoever RECEIVED
+// the money, so the $500.00 SEND rests wholly RIGHT of the centre line (Abbaas's
+// side) and the $200.00 PAYMENT rests wholly LEFT of it (the owner's side). Each
+// starts displaced one whole card width plus the 36 px dot column toward its SENDER's
+// side, so it starts wholly on the other half: the send starts on the left (negative
+// x) and the payment on the right (positive x). The page is one centred column, so
+// the centre line is the viewport's middle at every width.
 //
 // Two transient states cannot be caught by a round-trip assertion, so frames are
 // recorded inside the page with requestAnimationFrame and judged afterwards. Home's
@@ -31,10 +42,12 @@ import { createAccount, seedHistory, type Account } from '../support/accounts.js
 // on demand, from the tap.
 //
 // Not judged here: the exact per-element delays and durations inside the entrance
-// (320/460 ms boxes, 70 ms apart entries, 640 ms spine) carry no public marker of
-// their own; the oracle judges what the observation states - the direction each thing
-// moves from, that the amount really counts rather than jumps, that the rows rise one
-// after another and not all at once, and that everything is over inside the budget.
+// (the 680 ms crossing, the 90 ms stagger, the box rise, the spine draw) carry no
+// public marker of their own; the oracle judges what the observation states - that
+// each card starts wholly on its sender's half and rests wholly on its receiver's
+// half, that it travels there without turning back, that the cards cross one after
+// another rather than together, that the amount really counts rather than jumps, that
+// the rows rise one after another, and that everything is over inside the budget.
 
 const PASSWORD_FIELD = 'input[type="password"]'
 const VIEWPORT = { width: 390, height: 844 } as const
@@ -61,10 +74,19 @@ const RECEIVE_TEXT = '$200.00'
 const HELD_CENTS = SEND_CENTS - RECEIVE_CENTS
 const HELD_TEXT = '$300.00'
 
-// The design caps Home's entrance at 1.6 s and the form's rows finish 240 ms after
-// the reveal plus the stagger and the rise, well inside 1.2 s of the tap.
-const HOME_ENTER_LIMIT_MS = 1_600
+// The design caps Home's whole entrance, crossings included, at 2.2 s of the reload;
+// the form's rows finish well inside 1.2 s of the tap.
+const HOME_ENTER_LIMIT_MS = 2_200
 const ROWS_LIMIT_MS = 1_200
+// The centre line is the viewport's middle, because the page is one centred column.
+const CENTRE_X = VIEWPORT.width / 2
+// A card is judged shown only once it is really visible, so the invisible first frame
+// of its fade-in cannot stand in for the crossing.
+const VISIBLE_OPACITY = 0.5
+// A sub-pixel wobble in a computed transform is not a card turning back.
+const MONOTONE_TOLERANCE_PX = 1
+// A card at rest carries no displacement of its own.
+const AT_REST_PX = 0.5
 // The load recording must cover the session resolving, the ledger read and the whole
 // entrance; the tap recording only the form's opening.
 const LOAD_WINDOW_MS = 6_000
@@ -157,6 +179,11 @@ type EntrySample = {
   readonly text: string
   readonly transform: string
   readonly opacity: number
+  /** The element's own data-motion at this frame, null when it carries none. */
+  readonly motion: string | null
+  /** The element's laid-out box, in viewport pixels. */
+  readonly left: number
+  readonly right: number
 }
 
 type RowSample = {
@@ -219,10 +246,14 @@ const installRecorder = async (page: Page): Promise<void> => {
       const movers = (selector: string): unknown[] =>
         Array.from(document.querySelectorAll(selector), (element) => {
           const style = getComputedStyle(element)
+          const box = element.getBoundingClientRect()
           return {
             text: clean(element.textContent),
             transform: style.transform,
             opacity: Number(style.opacity),
+            motion: element.getAttribute('data-motion'),
+            left: box.left,
+            right: box.right,
           }
         })
 
@@ -338,17 +369,39 @@ const framesWith = (frames: readonly Frame[], motion: string): readonly Frame[] 
 const entryIn = (frame: Frame, amount: string): EntrySample | undefined =>
   frame.entries.find((entry) => entry.text.includes(amount))
 
-/**
- * The first displacement the named card is seen with: the first frame at which it is
- * in the document and its transform moves it off where it rests. A card that is never
- * displaced is a card that never slid in, which is a failure the caller reports.
- */
-const firstShift = (frames: readonly Frame[], amount: string): number | null => {
+/** Every sample of the named card, in frame order, with the frame's timestamp. */
+type Travel = { readonly t: number; readonly entry: EntrySample; readonly shift: number }
+
+const travelOf = (frames: readonly Frame[], amount: string): readonly Travel[] => {
+  const samples: Travel[] = []
   for (const frame of frames) {
     const entry = entryIn(frame, amount)
     if (!entry) continue
     const shift = translationX(entry.transform)
-    if (shift !== null && Math.abs(shift) > 0.5) return shift
+    if (shift === null) continue
+    samples.push({ t: frame.t, entry, shift })
+  }
+  return samples
+}
+
+/**
+ * The first displacement the named card is seen with: the first sample at which its
+ * transform moves it off where it rests. A card that is never displaced is a card
+ * that never crossed, which is a failure the caller reports.
+ */
+const firstShift = (travel: readonly Travel[]): number | null => {
+  for (const sample of travel) {
+    if (Math.abs(sample.shift) > AT_REST_PX) return sample.shift
+  }
+  return null
+}
+
+/** The first moment from which the named card is displaced no further: its rest. */
+const restedAt = (travel: readonly Travel[]): number | null => {
+  for (let index = 0; index < travel.length; index += 1) {
+    if (travel.slice(index).every((sample) => Math.abs(sample.shift) <= AT_REST_PX)) {
+      return travel[index]!.t
+    }
   }
   return null
 }
@@ -373,6 +426,28 @@ const signIn = async (page: Page, account: Account): Promise<void> => {
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator(PASSWORD_FIELD)).toHaveCount(0)
   await expect(page.locator('[data-box="abbaas"]')).toContainText(HELD_TEXT)
+}
+
+/**
+ * The resting rule of this Request, read off the laid-out page: the send's card lies
+ * wholly right of the centre line (Abbaas received that money) and the payment's card
+ * wholly left of it (the owner received that money).
+ */
+const expectRestingSides = async (page: Page): Promise<void> => {
+  await expect(page.locator('[data-motion]')).toHaveCount(0)
+  const sendCard = page.locator('[data-entry]', { hasText: SEND_TEXT })
+  const paymentCard = page.locator('[data-entry]', { hasText: RECEIVE_TEXT })
+  const sendBox = await sendCard.boundingBox()
+  const paymentBox = await paymentCard.boundingBox()
+  if (!sendBox || !paymentBox) throw new Error('an entry card has no layout box at rest')
+  expect(
+    sendBox.x,
+    `the send card rests at x ${sendBox.x}, not wholly right of the centre line at ${CENTRE_X}`,
+  ).toBeGreaterThanOrEqual(CENTRE_X)
+  expect(
+    paymentBox.x + paymentBox.width,
+    `the payment card's right edge rests at ${paymentBox.x + paymentBox.width}, not wholly left of the centre line at ${CENTRE_X}`,
+  ).toBeLessThanOrEqual(CENTRE_X)
 }
 
 /** A phone-sized context on the refined board's viewport, optionally reduced-motion. */
@@ -407,7 +482,7 @@ const reloadAndRecord = async (page: Page): Promise<readonly Frame[]> => {
 // Without reduced motion: Home's entrance on open, then the form's rows.
 // ===========================================================================
 
-test("opening the app rises the boxes, counts the balance up from $0, draws the centre line down and slides each entry in from its own side", async ({
+test("opening the app rises the boxes, counts the balance up from $0, draws the centre line down and crosses each card from its sender's side to its receiver's side, one after another", async ({
   browser,
 }: {
   browser: Browser
@@ -480,20 +555,91 @@ test("opening the app rises the boxes, counts the balance up from $0, draws the 
     ).not.toBeNull()
     expect(restingScale!, 'the centre line did not finish at its full height').toBeCloseTo(1, 2)
 
-    // ----- Each entry slides in from its own side. -----
-    const sendShift = firstShift(frames, SEND_TEXT)
-    expect(sendShift, 'the send card never slid in: it was never displaced').not.toBeNull()
+    // ----- Each card crosses the centre line from its sender's side. -----
+    // The send was sent BY the owner, so it starts on the owner's left half and rests
+    // on Abbaas's right half. The payment was sent BY Abbaas, so it starts on his
+    // right half and rests on the owner's left half.
+    const sendTravel = travelOf(frames, SEND_TEXT)
+    const paymentTravel = travelOf(frames, RECEIVE_TEXT)
+    expect(sendTravel.length, 'the send card was never in the recording').toBeGreaterThan(0)
+    expect(paymentTravel.length, 'the payment card was never in the recording').toBeGreaterThan(0)
+
+    const sendShift = firstShift(sendTravel)
+    expect(sendShift, 'the send card never crossed: it was never displaced').not.toBeNull()
     expect(
       sendShift!,
-      'the send card did not slide in from its own side (the left)',
+      "the send card did not start displaced toward its sender's side (the owner's left)",
     ).toBeLessThan(0)
 
-    const receiveShift = firstShift(frames, RECEIVE_TEXT)
-    expect(receiveShift, 'the payment card never slid in: it was never displaced').not.toBeNull()
+    const paymentShift = firstShift(paymentTravel)
+    expect(paymentShift, 'the payment card never crossed: it was never displaced').not.toBeNull()
     expect(
-      receiveShift!,
-      'the payment card did not slide in from its own side (the right)',
+      paymentShift!,
+      "the payment card did not start displaced toward its sender's side (Abbaas's right)",
     ).toBeGreaterThan(0)
+
+    // While a card is displaced it carries data-motion, and the value the Request's
+    // motion contract gives a travelling card is 'cross'.
+    for (const [label, travel] of [
+      ['send', sendTravel],
+      ['payment', paymentTravel],
+    ] as const) {
+      const moving = travel.filter((sample) => Math.abs(sample.shift) > AT_REST_PX)
+      expect(moving.length, `the ${label} card was never seen displaced`).toBeGreaterThan(0)
+      for (const sample of moving) {
+        expect(
+          sample.entry.motion,
+          `the ${label} card was displaced while carrying no data-motion, so a reader waiting for data-motion to clear would read a card still in flight`,
+        ).toBe('cross')
+      }
+    }
+
+    // Each card is wholly on its sender's half while it is really visible, and wholly
+    // on its receiver's half at rest.
+    const senderSide = (travel: readonly Travel[], label: string, side: 'left' | 'right'): void => {
+      const visible = travel.filter(
+        (sample) =>
+          sample.entry.opacity > VISIBLE_OPACITY && Math.abs(sample.shift) > AT_REST_PX,
+      )
+      expect(visible.length, `the ${label} card was never visible while displaced`).toBeGreaterThan(
+        0,
+      )
+      expect(
+        visible.some((sample) =>
+          side === 'left' ? sample.entry.right <= CENTRE_X : sample.entry.left >= CENTRE_X,
+        ),
+        `the ${label} card was never seen wholly in the ${side} half: it did not start on its sender's side`,
+      ).toBe(true)
+    }
+    senderSide(sendTravel, 'send', 'left')
+    senderSide(paymentTravel, 'payment', 'right')
+
+    // It travels there on one curve, so its displacement only shrinks: it never turns
+    // back across the line.
+    const towardsRest = (travel: readonly Travel[], label: string): void => {
+      const from = travel.findIndex((sample) => Math.abs(sample.shift) > AT_REST_PX)
+      const moving = travel.slice(from)
+      for (let index = 1; index < moving.length; index += 1) {
+        expect(
+          Math.abs(moving[index]!.shift),
+          `the ${label} card moved further from its resting side after starting to cross: it crossed back`,
+        ).toBeLessThanOrEqual(Math.abs(moving[index - 1]!.shift) + MONOTONE_TOLERANCE_PX)
+      }
+    }
+    towardsRest(sendTravel, 'send')
+    towardsRest(paymentTravel, 'payment')
+
+    // ----- The cards cross one after another, not together. -----
+    // The send is yesterday's and the payment today's, so the payment's day group is
+    // above the send's: the payment is the card above and crosses first.
+    const paymentRested = restedAt(paymentTravel)
+    const sendRested = restedAt(sendTravel)
+    expect(paymentRested, 'the payment card never came to rest in the recording').not.toBeNull()
+    expect(sendRested, 'the send card never came to rest in the recording').not.toBeNull()
+    expect(
+      sendRested!,
+      'both cards came to rest at the same moment: they did not cross one after another',
+    ).toBeGreaterThan(paymentRested!)
 
     // ----- The bottom buttons rise into place. -----
     expect(
@@ -503,7 +649,7 @@ test("opening the app rises the boxes, counts the balance up from $0, draws the 
       'the bottom buttons never rose into place during the entrance',
     ).toBe(true)
 
-    // ----- The whole entrance is over inside 1.6 s of its first frame. -----
+    // ----- The whole entrance, crossings included, is over inside 2.2 s. -----
     const began = entering[0]!.t
     const settled = frames.filter(
       (frame) => frame.t - began <= HOME_ENTER_LIMIT_MS && frame.motions.length === 0,
@@ -520,6 +666,10 @@ test("opening the app rises the boxes, counts the balance up from $0, draws the 
     await expect(abbaasBox).toHaveAttribute('data-amount', String(HELD_CENTS))
     await expect(abbaasBox).toContainText(HELD_TEXT)
     await expect(page.locator('[data-entry]')).toHaveCount(2)
+
+    // Once nothing carries data-motion the resting layout is readable, and each card
+    // rests wholly on the side of whoever received the money.
+    await expectRestingSides(page)
 
     // ===== Opening Send: the ripple on the button, then the rows rising in. =====
     const sendButton = page.locator('[data-action="send"]')
@@ -677,7 +827,25 @@ test('with reduced motion opening the app and opening a form show their end stat
           `an entry was displaced with reduced motion: ${entry.transform}`,
         ).toBeCloseTo(0, 1)
         expect(entry.opacity, 'an entry was transparent with reduced motion').toBe(1)
+        expect(
+          entry.motion,
+          'an entry carried data-motion with reduced motion',
+        ).toBeNull()
       }
+      // Every card is already on its resting side, from the first frame Home is shown:
+      // nothing travels across the line under reduce.
+      const send = entryIn(frame, SEND_TEXT)
+      const payment = entryIn(frame, RECEIVE_TEXT)
+      expect(send, 'the send card was absent from a Home frame').toBeDefined()
+      expect(payment, 'the payment card was absent from a Home frame').toBeDefined()
+      expect(
+        send!.left,
+        'the send card was not already wholly right of the centre line with reduced motion',
+      ).toBeGreaterThanOrEqual(CENTRE_X)
+      expect(
+        payment!.right,
+        'the payment card was not already wholly left of the centre line with reduced motion',
+      ).toBeLessThanOrEqual(CENTRE_X)
       for (const action of frame.actions) {
         expect(
           translationY(action.transform),
@@ -694,6 +862,8 @@ test('with reduced motion opening the app and opening a form show their end stat
         expect(scale!, 'the centre line was drawing down with reduced motion').toBeCloseTo(1, 2)
       }
     }
+
+    await expectRestingSides(page)
 
     // ===== Opening Send shows every row at once, with no ripple. =====
     const tapFrames = await (async () => {

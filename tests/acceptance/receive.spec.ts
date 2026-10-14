@@ -9,15 +9,17 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, readEntries, seedUsdSend, type Account } from '../support/accounts.js'
 
-// Refined board value 4: the receive form as on the refined board.
+// Travelling cards value 2: a payment rests on the owner's side.
 //
 // Judged through the declared public port only: the built bundle's DOM (Home's
 // Receive button and balance boxes, the teal receive form with its frame,
 // currency switch, Amount received field, date chip and white Receive button,
 // and Home's centre-line cards) and, outside the browser, the rows the app
-// stored. The refined board drops the quick amounts, the note field, the
-// after-saving preview and the over-payment note, and moves payments to the
-// RIGHT of the centre line, so this oracle replaces version one's at this path.
+// stored. The receive form, the storage and the balances are asserted exactly
+// as the refined board's oracle did. What changes is the resting side: a card
+// rests on the side of whoever RECEIVED the money, so a payment from Abbaas now
+// lies wholly LEFT of the centre line (the owner's side) while a send stays
+// wholly RIGHT of it (Abbaas's side).
 
 const PASSWORD_FIELD = 'input[type="password"]'
 /** The refined board's reference phone. */
@@ -64,19 +66,34 @@ const signIn = async (page: Page): Promise<void> => {
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator(PASSWORD_FIELD)).toHaveCount(0)
   // A fresh Home enters: its root carries data-motion while the boxes rise, the
-  // balance counts up from $0 and each card slides in from its side.
+  // balance counts up from $0 and each card crosses in from the sender's side.
   await expect(page.locator('[data-box="you"]')).toBeVisible()
   await settle(page)
 }
 
 /**
- * Saving grows Home from the save button, brings the new card in from its own
- * side and counts the boxes, each marked with data-motion while it runs.
+ * Saving grows Home from the save button, carries the new card across the centre
+ * line from the sender's side and counts the boxes, each marked with data-motion
+ * while it runs.
  * Positions and box amounts are only the settled truth once nothing in the
  * document is still moving, so every read after a save waits for that first.
  */
 const settle = async (page: Page): Promise<void> => {
   await expect(page.locator('[data-motion]')).toHaveCount(0)
+}
+
+/**
+ * A save is answered by Home, not by the tap: between the tap and the store's
+ * reply nothing is displaced yet, so no element carries data-motion and a bare
+ * rest wait would pass at once, mid-crossing. So every save first waits for the
+ * answer to have arrived - the form has left the DOM and the new card is in it -
+ * and only then for every displaced element to have come to rest. Only after
+ * both may a side, ring, box or count be read.
+ */
+const settleAfterSave = async (page: Page, expectedEntries: number): Promise<void> => {
+  await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
+  await expect(page.locator('[data-entry]')).toHaveCount(expectedEntries)
+  await settle(page)
 }
 
 /**
@@ -129,16 +146,31 @@ const expectEmptyBox = async (box: Locator): Promise<void> => {
   await expect(box).toHaveAttribute('data-amount', '0')
 }
 
+/** The seeded $740.00 send card, found by the person it names. */
+const sendEntry = (page: Page): Locator =>
+  page.locator('[data-entry]').filter({ hasText: SEEDED_PERSON })
+
 /**
- * The refined board puts a payment's card on the right of the centre line. The
- * app is one centred column that fills this 390 px phone, so the centre line is
- * the middle of the viewport.
+ * A card rests on the side of whoever received the money, and the page is one
+ * centred column filling this 390 px phone, so the centre line is the middle of
+ * the viewport. A send's card lies wholly right of it: Abbaas received it.
  */
 const expectWhollyInRightHalf = async (element: Locator): Promise<void> => {
   const rect = await element.boundingBox()
   if (!rect) throw new Error('The card has no layout box')
   expect(rect.x).toBeGreaterThanOrEqual(VIEWPORT.width / 2)
   expect(rect.x + rect.width).toBeLessThanOrEqual(VIEWPORT.width)
+}
+
+/**
+ * A payment from Abbaas lies wholly left of the centre line: the owner received
+ * it, so the card rests under the owner's box.
+ */
+const expectWhollyInLeftHalf = async (element: Locator): Promise<void> => {
+  const rect = await element.boundingBox()
+  if (!rect) throw new Error('The card has no layout box')
+  expect(rect.x).toBeGreaterThanOrEqual(0)
+  expect(rect.x + rect.width).toBeLessThanOrEqual(VIEWPORT.width / 2)
 }
 
 /** The form must offer none of version one's extras, in any state. */
@@ -151,7 +183,7 @@ const expectNoVersionOneExtras = async (page: Page): Promise<void> => {
   await expect(page.locator('[data-receive-note]')).toHaveCount(0)
 }
 
-test('the refined receive form records a payment right of the line, clears the balance, and moves it to the owner', async ({
+test('the receive form records a payment left of the line, clears the balance, and moves it to the owner', async ({
   page,
 }) => {
   await signIn(page)
@@ -212,15 +244,22 @@ test('the refined receive form records a payment right of the line, clears the b
   await expect(save).toBeEnabled()
   await save.click()
 
-  // ----- Home: the payment card sits in the RIGHT half and his box dropped. -----
-  await settle(page)
-  await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
-  await expect(page.locator('[data-entry]')).toHaveCount(2)
+  // ----- Home: the payment card sits in the LEFT half and his box dropped. -----
+  await settleAfterSave(page, 2)
   const firstPayment = receiveEntries(page)
   await expect(firstPayment).toHaveCount(1)
   await expect(firstPayment).toContainText('$300.00')
   await expect(firstPayment.locator('[data-person]')).toHaveCount(0)
-  await expectWhollyInRightHalf(firstPayment)
+  // The owner received this money, so its card rests on the owner's side.
+  await expectWhollyInLeftHalf(firstPayment)
+
+  // The seeded $740.00 send stays on Abbaas's side: he received that money. The
+  // two sides are read in the same resting Home, so one rule cannot satisfy both
+  // by putting every card in one half.
+  const seededSend = sendEntry(page)
+  await expect(seededSend).toHaveCount(1)
+  await expect(seededSend).toContainText('$740.00')
+  await expectWhollyInRightHalf(seededSend)
 
   await expect(abbaasBox).toHaveAttribute('data-state', 'filled')
   await expect(abbaasBox).toHaveAttribute('data-amount', '44000')
@@ -235,9 +274,7 @@ test('the refined receive form records a payment right of the line, clears the b
   await page.getByLabel('Amount received').fill('440')
   await page.getByRole('button', { name: 'Receive · $440.00', exact: true }).click()
 
-  await settle(page)
-  await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
-  await expect(page.locator('[data-entry]')).toHaveCount(3)
+  await settleAfterSave(page, 3)
   await expectEmptyBox(abbaasBox)
   await expectEmptyBox(youBox)
   await expect(page.locator('[data-square]')).toBeVisible()
@@ -249,9 +286,7 @@ test('the refined receive form records a payment right of the line, clears the b
   await page.getByRole('button', { name: 'Receive · $200.00', exact: true }).click()
 
   // ----- Home: the money is now on the owner's side, unsigned. -----
-  await settle(page)
-  await expect(page.locator('[data-form="receive"]')).toHaveCount(0)
-  await expect(page.locator('[data-entry]')).toHaveCount(4)
+  await settleAfterSave(page, 4)
   await expect(receiveEntries(page)).toHaveCount(3)
   await expect(youBox).toHaveAttribute('data-state', 'filled')
   await expect(youBox).toHaveAttribute('data-amount', '20000')
@@ -263,11 +298,13 @@ test('the refined receive form records a payment right of the line, clears the b
   await expectEmptyBox(abbaasBox)
   await expect(page.locator('[data-square]')).toHaveCount(0)
 
-  // Every payment card is wholly in the right half, none claims a person.
+  // Every payment card is wholly in the left half, none claims a person, and the
+  // send card is still wholly in the right half.
   for (const card of await receiveEntries(page).all()) {
-    await expectWhollyInRightHalf(card)
+    await expectWhollyInLeftHalf(card)
     await expect(card.locator('[data-person]')).toHaveCount(0)
   }
+  await expectWhollyInRightHalf(sendEntry(page))
 
   // ===== Closing the form, by its own control and by the back button. =====
   await openReceiveForm(page)

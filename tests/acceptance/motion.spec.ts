@@ -9,17 +9,27 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, seedUsdSend, type Account } from '../support/accounts.js'
 
-// Refined board value 6: the save motion, with an uncut ring and no Saved message.
-// Home grows as a circle from the form's white save button over the dimmed form, then
-// only the new entry arrives from its own side with a ring in its colour that is never
-// cut off, and the balance counts to its new value.
+// Travelling cards value 6: the new card crosses the line.
+// Home still grows as a circle from the form's white save button over the dimmed form.
+// Then the new card APPEARS ON THE SENDER'S HALF -- a send on the owner's left, a
+// payment on Abbaas's right -- lifted and already wearing its uncut ring, holds there,
+// and crosses the centre line to rest on the RECEIVER'S half while the boxes count.
 //
 // Judged through the declared public port only: the built bundle's DOM OVER TIME,
 // with and without prefers-reduced-motion. The observable contract is the one the
 // design fixed: while a motion runs its element carries data-motion with the value
-// grow (the Home mounted above the form), enter (the new entry), count or swap (the
-// boxes), and the attribute is removed when that motion ends. Home is located as the
-// element carrying data-motion="grow"; no new attribute is needed and none is used.
+// grow (the Home mounted above the form), cross (the new card, from before its first
+// displaced frame until it rests), count or swap (the boxes), and the attribute is
+// removed when that motion ends. Home is located as the element carrying
+// data-motion="grow"; no new attribute is needed and none is used.
+//
+// The crossing itself is judged geometrically, not by any invented marker, against the
+// one line the design names: the centre line is the viewport's middle at every width
+// (the page is one centred column). 'Wholly on a half' is read from the card's own
+// bounding box, which already carries the scale and the translation of the motion. The
+// card is required to cross ONCE, so between the sampled frame on the sender's half and
+// its rest its x only moves the one way: a send's only rightward, a payment's only
+// leftward.
 //
 // A single transient state cannot be caught by a round-trip assertion, so the frames
 // are recorded inside the page with requestAnimationFrame and judged afterwards. The
@@ -94,6 +104,19 @@ const RING_WIDTH_PX = 2
 const WINDOW_MS = 3_500
 const GROW_LIMIT_MS = 900
 
+// The design fixes the whole save, from the tap to rest, at under 2.6 s: the grow, the
+// day group opening, the +120 ms appear over 240 ms, the 500 ms hold, the 760 ms cross
+// and the 800 ms count all finish inside it. Measured from the tap, which is the frame
+// the recording starts on, to the last frame on which anything still carries
+// data-motion. The 3,500 ms window is longer so that an overrun is SEEN and reported
+// rather than cutting the recording short.
+const SETTLE_LIMIT_MS = 2_600
+
+// Sub-pixel tolerance for 'wholly on one half of the line' and for 'moves only one
+// way': layout and compositing round, and a card resting exactly on the line is not a
+// card on the wrong side.
+const EDGE_TOLERANCE_PX = 0.5
+
 let stack: Stack
 let served: ServedOrigin
 
@@ -150,6 +173,9 @@ type EntrySample = {
   readonly ringColour: string
   /** Which property drew it, for a legible failure. */
   readonly ringSource: 'border' | 'inset-shadow' | 'none'
+  /** The card's box in viewport pixels, as drawn: the motion's transform is in it. */
+  readonly left: number
+  readonly right: number
 }
 
 type Frame = {
@@ -168,6 +194,8 @@ type Frame = {
     | null
   /** How many elements anywhere in the document have a circle() clip-path. */
   readonly circleClipped: number
+  /** The centre line: the viewport's middle at this frame's width. */
+  readonly middle: number
   readonly you: Sample | null
   readonly abbaas: Sample | null
   readonly entries: readonly EntrySample[]
@@ -242,6 +270,7 @@ const installRecorder = async (page: Page): Promise<void> => {
             circleClipped: Array.from(document.querySelectorAll('*')).filter((element) =>
               getComputedStyle(element).clipPath.includes('circle('),
             ).length,
+            middle: document.documentElement.clientWidth / 2,
             you: sample('[data-box="you"]'),
             abbaas: sample('[data-box="abbaas"]'),
             entries: Array.from(document.querySelectorAll('[data-entry]'), (element) => {
@@ -250,7 +279,10 @@ const installRecorder = async (page: Page): Promise<void> => {
               // or an inset box-shadow. Either is accepted; nothing outside the box is.
               const borderWidth = Number.parseFloat(style.borderTopWidth) || 0
               const shadow = borderWidth > 0 ? null : insetRing(style.boxShadow)
+              const box = element.getBoundingClientRect()
               return {
+                left: box.left,
+                right: box.right,
                 motion: element.getAttribute('data-motion'),
                 text: clean(element.textContent),
                 transform: style.transform,
@@ -312,15 +344,105 @@ const translationX = (transform: string): number | null => {
 const framesWith = (frames: readonly Frame[], motion: string): readonly Frame[] =>
   frames.filter((frame) => frame.motions.includes(motion))
 
-/** The first frame at which an entry whose text holds `amount` is mid-entrance. */
-const firstEntering = (frames: readonly Frame[], amount: string): EntrySample => {
-  for (const frame of frames) {
-    const entry = frame.entries.find(
-      (candidate) => candidate.text.includes(amount) && candidate.motion === 'enter',
-    )
-    if (entry) return entry
+type Tracked = { readonly t: number; readonly middle: number; readonly card: EntrySample }
+
+/** Every frame on which the card whose text holds `amount` is in the document. */
+const track = (frames: readonly Frame[], amount: string): readonly Tracked[] =>
+  frames.flatMap((frame) => {
+    const card = frame.entries.find((candidate) => candidate.text.includes(amount))
+    return card ? [{ t: frame.t, middle: frame.middle, card }] : []
+  })
+
+/**
+ * The crossing, judged on the one line the design names and on nothing else.
+ *
+ * `toward` is the receiver's half: 'right' for a send (Abbaas received), 'left' for a
+ * payment (the owner received). The card must be SEEN wholly on the opposite half --
+ * the sender's -- while it is visible and while it still says it is moving, must come
+ * to rest wholly on the receiver's half, and must get there by moving the one way.
+ */
+const expectCrossing = (
+  frames: readonly Frame[],
+  amount: string,
+  toward: 'left' | 'right',
+  what: string,
+): void => {
+  const seen = track(frames, amount)
+  expect(seen.length, `no frame showed the ${what} card (${amount})`).toBeGreaterThan(0)
+
+  // It says it is moving: the design's marker for a new or entering card.
+  expect(
+    seen.some((frame) => frame.card.motion === 'cross'),
+    `the new ${what} card never carried data-motion="cross"`,
+  ).toBe(true)
+
+  // Seen on the SENDER'S half, visible, while it is still marked as crossing.
+  const onSender = (frame: Tracked): boolean =>
+    toward === 'right'
+      ? frame.card.right <= frame.middle + EDGE_TOLERANCE_PX
+      : frame.card.left >= frame.middle - EDGE_TOLERANCE_PX
+  const departure = seen.find(
+    (frame) => frame.card.motion === 'cross' && frame.card.opacity > 0.5 && onSender(frame),
+  )
+  expect(
+    departure,
+    `the new ${what} card was never seen wholly on the sender's ${
+      toward === 'right' ? 'left' : 'right'
+    } half while visible and crossing; its boxes were ` +
+      JSON.stringify(
+        seen
+          .filter((frame) => frame.card.motion === 'cross')
+          .slice(0, 12)
+          .map((frame) => ({
+            t: Math.round(frame.t),
+            left: Math.round(frame.card.left),
+            right: Math.round(frame.card.right),
+            opacity: frame.card.opacity,
+            middle: frame.middle,
+          })),
+      ),
+  ).toBeDefined()
+
+  // At rest, wholly on the RECEIVER'S half, and no longer marked.
+  const resting = seen[seen.length - 1]!
+  expect(resting.card.motion, `the ${what} card still carried data-motion at rest`).toBeNull()
+  if (toward === 'right') {
+    expect(
+      resting.card.left,
+      `the ${what} card rested with its left edge at ${resting.card.left}, left of the centre line (${resting.middle}), not wholly on the receiver's right half`,
+    ).toBeGreaterThanOrEqual(resting.middle - EDGE_TOLERANCE_PX)
+  } else {
+    expect(
+      resting.card.right,
+      `the ${what} card rested with its right edge at ${resting.card.right}, right of the centre line (${resting.middle}), not wholly on the receiver's left half`,
+    ).toBeLessThanOrEqual(resting.middle + EDGE_TOLERANCE_PX)
   }
-  throw new Error(`no frame showed the ${amount} entry carrying data-motion="enter"`)
+
+  // It crosses ONCE: from the departure to rest its x only moves the one way.
+  const path = seen.slice(seen.indexOf(departure!)).map((frame) => frame.card.left)
+  const backwards = path.flatMap((left, index) => {
+    if (index === 0) return []
+    const previous = path[index - 1]!
+    const wrongWay =
+      toward === 'right' ? left < previous - EDGE_TOLERANCE_PX : left > previous + EDGE_TOLERANCE_PX
+    return wrongWay ? [{ from: previous, to: left }] : []
+  })
+  expect(
+    backwards,
+    `the ${what} card moved back toward the sender's side instead of crossing once`,
+  ).toEqual([])
+}
+
+/** Nothing is still moving: the last frame on which anything carried data-motion. */
+const expectRestedWithin = (frames: readonly Frame[], limitMs: number): void => {
+  const moving = frames.filter((frame) => frame.motions.length > 0)
+  const last = moving[moving.length - 1]
+  expect(
+    last ? last.t : 0,
+    `something still carried data-motion ${last ? Math.round(last.t) : 0} ms after the tap (${
+      last ? last.motions.join(', ') : ''
+    })`,
+  ).toBeLessThanOrEqual(limitMs)
 }
 
 /** The resting ring of the entry whose text holds `amount`, at the last frame. */
@@ -496,7 +618,7 @@ const expectNoSavedMessage = async (page: Page): Promise<void> => {
 // Without reduced motion: every motion is observable while it runs and gone after.
 // ===========================================================================
 
-test('saving a send grows Home from the button over the form, brings the card in from the left with an uncut ring and counts the balance', async ({
+test('saving a send grows Home from the button over the form, shows the card on the owner’s left and carries it across the line to Abbaas’s right with an uncut ring while the balance counts', async ({
   browser,
 }: {
   browser: Browser
@@ -523,14 +645,9 @@ test('saving a send grows Home from the button over the form, brings the card in
     const { frames, centre } = await saveAndRecord(page, SEND_BUTTON_NAME)
     expectGrowFromButton(frames, centre, 'send')
 
-    // ===== Only the new entry moves, arriving from the left with its blue ring. =====
-    const entering = firstEntering(frames, SENT_TEXT)
-    const shift = translationX(entering.transform)
-    expect(shift, `the entering card's transform was unreadable: ${entering.transform}`).not.toBeNull()
-    expect(
-      shift!,
-      'the new send card did not start translated toward its own side (the left)',
-    ).toBeLessThan(0)
+    // ===== The new card appears on the SENDER'S half (the owner's left), holds, and
+    // ===== crosses the centre line to rest on the RECEIVER'S half (Abbaas's right).
+    expectCrossing(frames, SENT_TEXT, 'right', 'send')
 
     // The older entry never moves: only the new card is marked and only it is shifted.
     const movedOthers = frames.flatMap((frame) =>
@@ -563,6 +680,9 @@ test('saving a send grows Home from the button over the form, brings the card in
       'the balance jumped straight to its final text instead of counting',
     ).toBe(true)
 
+    // ===== The whole save, tap to rest, is over within 2.6 s. =====
+    expectRestedWithin(frames, SETTLE_LIMIT_MS)
+
     // ===== The end state, with the ring on screen and uncut. =====
     await expect(page.locator('[data-motion]')).toHaveCount(0)
     await expect(page.locator('[data-form]')).toHaveCount(0)
@@ -578,10 +698,11 @@ test('saving a send grows Home from the button over the form, brings the card in
 })
 
 // ===========================================================================
-// A payment larger than he holds: the card arrives from the right and the boxes swap.
+// A payment larger than he holds: the card crosses from his right to the owner's left
+// and the boxes swap, his draining as the owner's fills.
 // ===========================================================================
 
-test('saving a payment larger than Abbaas holds brings the card in from the right and swaps the boxes', async ({
+test('saving a payment larger than Abbaas holds shows the card on his right, carries it across the line to the owner’s left and swaps the boxes', async ({
   browser,
 }: {
   browser: Browser
@@ -600,14 +721,10 @@ test('saving a payment larger than Abbaas holds brings the card in from the righ
     const { frames, centre } = await saveAndRecord(page, RECEIVE_BUTTON_NAME)
     expectGrowFromButton(frames, centre, 'receive')
 
-    // The payment card arrives from its own side: the right.
-    const entering = firstEntering(frames, RECEIVED_TEXT)
-    const shift = translationX(entering.transform)
-    expect(shift, `the entering card's transform was unreadable: ${entering.transform}`).not.toBeNull()
-    expect(
-      shift!,
-      'the new payment card did not start translated toward its own side (the right)',
-    ).toBeGreaterThan(0)
+    // The payment card appears on the SENDER'S half (Abbaas's right) and crosses to
+    // rest on the RECEIVER'S half (the owner's left).
+    expectCrossing(frames, RECEIVED_TEXT, 'left', 'payment')
+    expectRestedWithin(frames, SETTLE_LIMIT_MS)
 
     expectRingInsideCard(restingEntry(frames, RECEIVED_TEXT), RECEIVE_COLOUR, 'payment')
 
@@ -694,6 +811,15 @@ test('with reduced motion saving shows Home in its end state at once, with no mo
     expect(firstHome.abbaas!.amount).toBe(String(AFTER_SEND_CENTS))
     expect(firstHome.abbaas!.text).toContain(AFTER_SEND_TEXT)
     expect(firstHome.abbaas!.cents, 'the box lost its data-cents span').toBe('.00')
+
+    // The new card is at rest on the receiver's half from the very first frame: it
+    // never shows on the sender's side and never crosses.
+    const newCard = firstHome.entries.find((entry) => entry.text.includes(SENT_TEXT))
+    expect(newCard, `the first Home frame showed no ${SENT_TEXT} card`).toBeDefined()
+    expect(
+      newCard!.left,
+      `with reduced motion the new send card's left edge (${newCard!.left}) was left of the centre line (${firstHome.middle}) instead of resting wholly on the receiver's right half`,
+    ).toBeGreaterThanOrEqual(firstHome.middle - EDGE_TOLERANCE_PX)
 
     // The new card rests from the first frame: nothing is displaced or transparent.
     for (const frame of homeFrames) {
