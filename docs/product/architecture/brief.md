@@ -2081,3 +2081,82 @@ Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-in
 Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/send-method.spec.ts`
+## Method value 2: the Receive form's Method row, stored
+
+### Purpose
+Let the owner say how a payment from Abbaas came in, Cheque unless they pick Cash or Transfer, and store it with the entry.
+
+### Constraints
+- The visual reference is the design board https://claude.ai/artifact/729zVXtrBTxsNAvjVzAfZa (artboards Send, Receive, Home and Entry sheet) as approved by the owner on 2026-10-16. The app's tokens in src/ui/theme.css stay: page #f4f7f6, ink #0d1f1c, muted #4c5f5b, You blue #24508a with deep #1b3f6e, Abbaas teal #0f6f68 with deep #0b5750, hairline #cfd9d6, Manrope for titles and figures, Source Sans 3 for text, the one curve --curve. Light theme only.
+- The attribute contract integrated at 112e554 stays in force and every existing acceptance spec keeps passing: Home's data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action (send/receive), data-form, data-person-chip, data-prefix, data-usd, data-motion, data-spine; the sheet's data-entry-sheet, data-sheet-scrim, data-sheet-usd, data-sheet-mvr, data-sheet-rate, data-sheet-person, data-sheet-date, data-sheet-delete, data-sheet-close, data-sheet-actions.
+- The method contract this Request adds, shared by all three values: the database column public.entries.method is text, nullable, with a check that it is one of 'cash', 'cheque', 'transfer', added by supabase/migrations/0002_entry_method.sql; LedgerEntry and NewEntry in src/ports/ledger-store.ts carry method: 'cash' | 'cheque' | 'transfer' | null (NewEntry's is never null from the forms). In each form the Method control is one element with role=radiogroup whose accessible name is 'Method', holding exactly three buttons with role=radio, accessible names 'Cash', 'Cheque' and 'Transfer' in that order, data-method='cash'|'cheque'|'transfer', and aria-checked='true' on exactly one. On Home a card whose entry has a method holds one element data-entry-method='<stored word>' whose text is 'Cash', 'Cheque' or 'Transfer'; a card whose method is null holds none. In the sheet the Method line carries data-sheet-method and reads 'Method' and the word; it is absent when the method is null.
+- The acceptance support (tests/support/accounts.ts) reads and seeds entries without the method column; a spec that must read or seed method does so itself through @supabase/supabase-js createClient(stack.apiUrl, stack.serviceRoleKey) on the entries table, filtered by the account's user_id, or through the bundle's own forms.
+- No policy change: the existing entries policies and grants cover the new column. The migration is applied to the local stack by the acceptance support's db reset; pushing it to the cloud project is the owner's step after integration.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/receive-form.ts` | EXTEND | The Method radio group under the amount and above the date, Cheque chosen; its choice goes into the NewEntry. |
+| `src/ui/theme.css` | EXTEND | The Receive form's Method row, with #0b5750 on the chosen pill. |
+
+### Paradigm
+functional
+
+### Decisions
+- Value 1 has already added entries.method, PaymentMethod and the adapter's read and write of it, and the Send form's Method row; this value reuses them.
+- The Receive form shows, after the amount block (and its MVR rate row) and before the date chip, the same Method label and 52 px track as the Send form, with the chosen pill's text #0b5750; the same role=radiogroup named Method, role=radio buttons Cash, Cheque, Transfer with aria-checked and data-method.
+- The Receive form opens with Cheque chosen every time; tapping an option chooses it; exactly one is always chosen; switching USD/MVR keeps it.
+- Saving a payment puts the chosen method into NewEntry.method; everything else about saving stays as integrated.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| onSave | `src/ui/receive-form.ts:409` | REUSE | The save path already hands a NewEntry to onSave; it only gains the method. |
+| renderReceiveForm | `src/ui/receive-form.ts:170` | EXTEND | The form gains the Method row. |
+
+### Prefactoring
+Not applicable: The forms, the store and the cards are extended in place; nothing must move first.
+
+### Agreement analysis
+Not applicable: The store's outcome shapes are unchanged; LedgerEntry and NewEntry gain one field whose values are named in the method contract.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the Send and Receive forms, Home's entry cards and the entry sheet.
+- Driven port: LedgerStore: entries read and deleted over PostgREST under row-level security.
+- Dependency direction: UI modules depend on port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: The insert cannot reach the server. | Outcome: Retry | Observation: The form stays open with Could not save. Try again. and nothing is stored, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Opening the teal Receive form shows the same Method row under the amount and above the date with Cheque chosen; saving a payment from Abbaas stores cheque, or the method tapped instead, with the entry.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account through the service role; a Chromium context at 390 by 844 signs in and waits until no element carries data-motion. It opens Receive, reads the Method group, saves a USD payment of $60.00 without touching Method; opens Receive again, taps Transfer and saves a USD payment of $25.00; opens Receive again, taps Cash, switches to MVR, enters MVR 1,000 at 20.00 and saves. After each save it waits until the form has left, the new card exists and no element carries data-motion.
+
+Expected: On opening, the Receive form has one role=radiogroup named Method placed after the amount field and before the date chip, with radios Cash, Cheque, Transfer in that order and only Cheque aria-checked=true. The service role then reads three entries, oldest first, kind 'receive', with method 'cheque', 'transfer' and 'cash' respectively.
+
+Falsifier: Cheque not chosen on opening, more or less than one radio checked, or a stored method other than the one chosen fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/receive-method.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-method.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive-method.spec.ts`
