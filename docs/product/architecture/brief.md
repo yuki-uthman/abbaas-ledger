@@ -2160,3 +2160,84 @@ Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.s
 Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/send-method.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/receive-method.spec.ts`
+## Method value 3: the method on Home's cards and in the entry sheet
+
+### Purpose
+Let the owner read each entry's method at a glance on Home and in full in its sheet.
+
+### Constraints
+- The visual reference is the design board https://claude.ai/artifact/729zVXtrBTxsNAvjVzAfZa (artboards Send, Receive, Home and Entry sheet) as approved by the owner on 2026-10-16. The app's tokens in src/ui/theme.css stay: page #f4f7f6, ink #0d1f1c, muted #4c5f5b, You blue #24508a with deep #1b3f6e, Abbaas teal #0f6f68 with deep #0b5750, hairline #cfd9d6, Manrope for titles and figures, Source Sans 3 for text, the one curve --curve. Light theme only.
+- The attribute contract integrated at 112e554 stays in force and every existing acceptance spec keeps passing: Home's data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action (send/receive), data-form, data-person-chip, data-prefix, data-usd, data-motion, data-spine; the sheet's data-entry-sheet, data-sheet-scrim, data-sheet-usd, data-sheet-mvr, data-sheet-rate, data-sheet-person, data-sheet-date, data-sheet-delete, data-sheet-close, data-sheet-actions.
+- The method contract this Request adds, shared by all three values: the database column public.entries.method is text, nullable, with a check that it is one of 'cash', 'cheque', 'transfer', added by supabase/migrations/0002_entry_method.sql; LedgerEntry and NewEntry in src/ports/ledger-store.ts carry method: 'cash' | 'cheque' | 'transfer' | null (NewEntry's is never null from the forms). In each form the Method control is one element with role=radiogroup whose accessible name is 'Method', holding exactly three buttons with role=radio, accessible names 'Cash', 'Cheque' and 'Transfer' in that order, data-method='cash'|'cheque'|'transfer', and aria-checked='true' on exactly one. On Home a card whose entry has a method holds one element data-entry-method='<stored word>' whose text is 'Cash', 'Cheque' or 'Transfer'; a card whose method is null holds none. In the sheet the Method line carries data-sheet-method and reads 'Method' and the word; it is absent when the method is null.
+- The acceptance support (tests/support/accounts.ts) reads and seeds entries without the method column; a spec that must read or seed method does so itself through @supabase/supabase-js createClient(stack.apiUrl, stack.serviceRoleKey) on the entries table, filtered by the account's user_id, or through the bundle's own forms.
+- No policy change: the existing entries policies and grants cover the new column. The migration is applied to the local stack by the acceptance support's db reset; pushing it to the cloud project is the owner's step after integration.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | The method tag on the card's amount line, nearest the centre line. |
+| `src/ui/entry-sheet.ts` | EXTEND | The Method line above Date. |
+| `src/ui/theme.css` | EXTEND | The tag and the sheet line. |
+
+### Paradigm
+functional
+
+### Decisions
+- Value 1 has already added entries.method and LedgerEntry.method ('cash' | 'cheque' | 'transfer' | null), read by the Supabase adapter.
+- A Home card whose entry has a method shows, on its amount line, a pill: height 20 px, padding 0 7 px, radius 999 px, white at about 78 % opacity, the card's colour (#24508a for a send, #0f6f68 for a payment), 11 px weight 700, an 11 px stroke icon then Cash, Cheque or Transfer. The amount stays on the card's outer edge and the pill sits at the inner edge, nearest the centre line. It carries data-entry-method with the stored word. A card whose method is null has no pill and reads as integrated.
+- The tag is part of the card's resting look: the travelling-card motion moves it with the card and adds no motion of its own.
+- The entry sheet shows, directly above the Date line, a row labelled Method whose value is the same icon and word, carrying data-sheet-method; a null method has no such row.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| entry-amount | `src/ui/home.ts:163` | EXTEND | The amount line gains the tag. |
+| renderRow | `src/ui/entry-sheet.ts:51` | REUSE | The sheet's rows are built by one helper; the Method row is one more of them. |
+
+### Prefactoring
+Not applicable: The forms, the store and the cards are extended in place; nothing must move first.
+
+### Agreement analysis
+Not applicable: The store's outcome shapes are unchanged; LedgerEntry and NewEntry gain one field whose values are named in the method contract.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the Send and Receive forms, Home's entry cards and the entry sheet.
+- Driven port: LedgerStore: entries read and deleted over PostgREST under row-level security.
+- Dependency direction: UI modules depend on port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: The insert cannot reach the server. | Outcome: Retry | Observation: The form stays open with Could not save. Try again. and nothing is stored, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: On Home every entry card whose entry has a stored method shows a small tag with its icon and Cash, Cheque or Transfer on the amount line nearest the centre line, and tapping the card opens a sheet with a Method line above Date naming it; an entry stored without a method shows no tag and no Method line.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account with one saved person Mariyam Nisha; through the service role, all dated the device's today, it stores a USD send of $250.00 to Mariyam Nisha with method 'cheque', a USD payment of $300.00 from Abbaas with method 'cash', an MVR send of MVR 10,000 at 20.00 ($500.00) to Mariyam Nisha with method 'transfer', and a USD send of $90.00 to Mariyam Nisha with method null. A Chromium context at 390 by 844 signs in and waits until no element carries data-motion, then taps each card in turn, waits for rest, reads the sheet and closes it.
+
+Expected: Home shows four data-entry cards. The $250.00 card holds one data-entry-method='cheque' reading 'Cheque', the $300.00 card one 'cash' reading 'Cash', the $500.00 card one 'transfer' reading 'Transfer', and the $90.00 card none. On a send card the tag's box lies left of the amount's box (toward the centre line) and on the payment card right of it. Each sheet has a data-sheet-method line reading Method and the same word, placed before the data-sheet-date line, except the $90.00 entry's sheet, which has no data-sheet-method.
+
+Falsifier: A missing, wrong or extra tag, a tag on the outer edge, a Method line on an entry without a method, or a missing or wrong Method line fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/entry-method.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-method.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive-method.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-method.spec.ts`
