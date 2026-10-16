@@ -11,7 +11,7 @@ import {
   parseUsdCents,
   rateFromScaled,
 } from './money.js'
-import type { Currency, NewEntry, Person } from '../ports/ledger-store.js'
+import type { Currency, NewEntry, PaymentMethod, Person } from '../ports/ledger-store.js'
 
 export type SendDraft = {
   /** USD when the form opens; MVR adds the rate the owner got that day. */
@@ -24,6 +24,11 @@ export type SendDraft = {
   /** YYYY-MM-DD. */
   readonly entryDate: string
   readonly note: string
+  /**
+   * How the money changed hands. A send always has one - the form opens on
+   * Transfer - so unlike the person this is never null.
+   */
+  readonly method: PaymentMethod
 }
 
 /** Today in the device's own time zone, as the Date field must show it. */
@@ -57,6 +62,9 @@ export const emptySendDraft = (today: string = todayIso()): SendDraft => ({
   person: null,
   entryDate: today,
   note: '',
+  // Transfer is how most of this money moves, so it is what a fresh form opens
+  // on; every opening starts here again, remembering no earlier choice.
+  method: 'transfer',
 })
 
 /**
@@ -110,5 +118,8 @@ export const draftToNewEntry = (draft: SendDraft): NewEntry | null => {
     note: note === '' ? null : note,
     personId: person.id,
     personName: person.name,
+    // Whatever the Method row is showing is what is stored, untouched default
+    // and tapped choice alike.
+    method: draft.method,
   }
 }

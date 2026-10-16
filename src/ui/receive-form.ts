@@ -19,6 +19,15 @@
 // no data-quick, no data-receive-note, no data-preview-box and no 'After saving'
 // words exist on this form at all.
 //
+// Method value 2 adds the Method row to the contract:
+//   - between the amount (with the rate row that belongs to it) and the date
+//     there is one element with role="radiogroup" named 'Method', holding
+//     exactly three role="radio" buttons named 'Cash', 'Cheque' and 'Transfer'
+//     in that order, each carrying data-method and aria-checked, with
+//     aria-checked="true" on exactly one of the three at every moment
+//   - the form opens on Cheque, every time, and the currency switch does not
+//     change which method is chosen
+//
 // Refined board value 7 adds to the contract one attribute of its own:
 //   - each row of the form carries data-row, in the order they are read down it
 // A form opened by a tap rises those rows in one after another once the circle
@@ -35,7 +44,7 @@ import {
   type ReceiveDraft,
 } from '../domain/receive-draft.js'
 import { dateChipWords, todayIso } from '../domain/send-draft.js'
-import type { AddEntryOutcome, NewEntry } from '../ports/ledger-store.js'
+import type { AddEntryOutcome, NewEntry, PaymentMethod } from '../ports/ledger-store.js'
 import { centreOf, enterRows, pressAndDim, revealFrom, type Point } from './motion.js'
 
 export type ReceiveFormHandlers = {
@@ -147,6 +156,12 @@ const CALENDAR = [
   'M9 5V3',
   'M15 5V3',
 ]
+/** Cash: a note with a coin in the middle of it. */
+const BANKNOTE = ['M3 7.5h18v9H3z', 'M12 10.5a1.5 1.5 0 0 0 0 3 1.5 1.5 0 0 0 0-3z']
+/** Cheque: a slip with a written line and a signature rule. */
+const CHEQUE = ['M3 6.5h18v11H3z', 'M6.5 10h7', 'M6.5 14h4']
+/** Transfer: two arrows passing each other, which is money moving between banks. */
+const SWAP = ['M4 9h13', 'M14 6l3 3-3 3', 'M20 15H7', 'M10 12l-3 3 3 3']
 
 /** A label that only a screen reader reads: the board draws words of its own. */
 const hiddenLabel = (text: string, htmlFor: string): HTMLLabelElement => {
@@ -285,6 +300,54 @@ export const renderReceiveForm = (
 
   rateRow.append(rateCard, workedCard)
 
+  // ----- Method: how the money came back. -----
+  // The send form's own row, in this form's teal: one track of three equal
+  // options, after the amount (and the rate row that belongs to it) and before
+  // the date, which is the order the form is read in: how much, how it moved,
+  // when.
+  //
+  // It is a real radio group: one element with role=radiogroup named by the
+  // label above it, holding exactly three role=radio buttons. Exactly one of
+  // them carries aria-checked='true' at every moment, so what a screen reader
+  // reports and what the white pill shows can never disagree.
+  const methodRow = document.createElement('div')
+  methodRow.className = 'method-row'
+
+  const methodLabel = document.createElement('p')
+  methodLabel.className = 'group-label'
+  methodLabel.id = 'receive-method-label'
+  methodLabel.textContent = 'Method'
+
+  const methodTrack = document.createElement('div')
+  methodTrack.className = 'method-track'
+  methodTrack.setAttribute('role', 'radiogroup')
+  methodTrack.setAttribute('aria-labelledby', methodLabel.id)
+
+  const METHOD_OPTIONS = [
+    { method: 'cash', word: 'Cash', paths: BANKNOTE },
+    { method: 'cheque', word: 'Cheque', paths: CHEQUE },
+    { method: 'transfer', word: 'Transfer', paths: SWAP },
+  ] as const
+
+  const methodButtons = METHOD_OPTIONS.map((option) => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'method-button'
+    button.setAttribute('role', 'radio')
+    button.dataset.method = option.method
+    // The icon is decoration beside the word that already says the same thing,
+    // so the option is named 'Cash' and not 'Cash banknote'.
+    button.append(icon(option.paths, 18))
+    const word = document.createElement('span')
+    word.textContent = option.word
+    button.append(word)
+    methodTrack.append(button)
+    return button
+  })
+
+  methodRow.append(methodLabel, methodTrack)
+  screen.append(methodRow)
+
   // ----- Date: one chip with the device's own picker lying over the whole of
   // it, so tapping anywhere on the chip opens the picker. -----
   const dateGroup = document.createElement('div')
@@ -381,6 +444,24 @@ export const renderReceiveForm = (
     refresh()
   }
 
+  /**
+   * Choosing a method: the draft holds the one chosen, and every button is
+   * repainted from it, so the one tapped is checked AND the one that was checked
+   * before is not. Nothing else about the draft is touched, which is why
+   * switching currency afterwards leaves the method exactly as it was.
+   */
+  const chooseMethod = (method: PaymentMethod): void => {
+    draft = { ...draft, method }
+    for (const button of methodButtons) {
+      button.setAttribute('aria-checked', button.dataset.method === method ? 'true' : 'false')
+    }
+  }
+
+  for (const button of methodButtons) {
+    const method = button.dataset.method as PaymentMethod
+    button.addEventListener('click', () => chooseMethod(method))
+  }
+
   usdButton.addEventListener('click', () => chooseCurrency('USD'))
   mvrButton.addEventListener('click', () => chooseCurrency('MVR'))
 
@@ -423,10 +504,13 @@ export const renderReceiveForm = (
   // USD is the currency the form opens in: this puts the pill under its half,
   // the dollar prefix on the amount and the rate row away.
   chooseCurrency('USD')
+  // Cheque is the method the form opens on: this paints it as the one chosen,
+  // and the other two as not.
+  chooseMethod(draft.method)
 
   // The rows of the form, in the order they are read down it, which is the
   // order they rise in.
-  const rows = [topRow, header, currencies, amountField, dateGroup, foot]
+  const rows = [topRow, header, currencies, amountField, methodRow, dateGroup, foot]
   for (const row of rows) row.dataset.row = ''
 
   // The form opens as a circle growing from the button that was tapped, and its

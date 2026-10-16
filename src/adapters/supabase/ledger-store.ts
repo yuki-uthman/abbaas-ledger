@@ -15,6 +15,7 @@ import {
   type LedgerEntry,
   type LedgerStore,
   type NewEntry,
+  type PaymentMethod,
   type Person,
   type ReadEntriesOutcome,
   type ReadPeopleOutcome,
@@ -23,7 +24,7 @@ import {
 
 /** The person an entry names travels on the entry itself: its id and its name. */
 const COLUMNS =
-  'id, kind, currency, amount_minor, rate, usd_cents, entry_date, saved_at, note, person_id, person_name'
+  'id, kind, currency, amount_minor, rate, usd_cents, entry_date, saved_at, note, person_id, person_name, method'
 
 type EntryRow = {
   id: string
@@ -37,6 +38,7 @@ type EntryRow = {
   note: string | null
   person_id: string | null
   person_name: string | null
+  method: string | null
 }
 
 /** bigint and numeric arrive as strings from PostgREST when they are large. */
@@ -55,6 +57,8 @@ const toEntry = (row: EntryRow): LedgerEntry => ({
   note: row.note,
   personId: row.person_id,
   personName: row.person_name,
+  // A row stored before the column existed holds null, which stays null here.
+  method: row.method === null ? null : (row.method as PaymentMethod),
 })
 
 type PersonRow = { id: string; name: string }
@@ -80,6 +84,7 @@ const toEntryRow = (entry: NewEntry): Record<string, unknown> => ({
   note: entry.note,
   person_id: entry.personId,
   person_name: entry.personName,
+  method: entry.method,
 })
 
 export const createSupabaseLedgerStore = (client: SupabaseClient): LedgerStore => ({

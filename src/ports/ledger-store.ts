@@ -6,6 +6,13 @@
 export type EntryKind = 'send' | 'receive'
 export type Currency = 'USD' | 'MVR'
 
+/**
+ * How the money changed hands. These three words are the whole of it, and they
+ * are the same three the database's own check constraint holds, so a method the
+ * app can name is a method the store can keep.
+ */
+export type PaymentMethod = 'cash' | 'cheque' | 'transfer'
+
 export type LedgerEntry = {
   readonly id: string
   readonly kind: EntryKind
@@ -22,6 +29,11 @@ export type LedgerEntry = {
   /** A send names a person; a repayment from Abbaas names nobody. */
   readonly personId: string | null
   readonly personName: string | null
+  /**
+   * How the money changed hands, or null for an entry stored before a method was
+   * ever asked for: a null method is read as nothing said, never as a default.
+   */
+  readonly method: PaymentMethod | null
 }
 
 /** A person the owner has paid on Abbaas's behalf; typed once, chosen thereafter. */
@@ -46,6 +58,12 @@ export type NewEntry = {
   readonly note: string | null
   readonly personId: string | null
   readonly personName: string | null
+  /**
+   * The method the form chose. A form always chooses one, so this is null only
+   * where no form asks yet; the column itself allows null for the rows stored
+   * before it existed.
+   */
+  readonly method: PaymentMethod | null
 }
 
 export const LEDGER_UNREADABLE_MESSAGE = 'Could not load the ledger. Try again.'

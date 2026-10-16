@@ -18,6 +18,10 @@
 //     data-sheet-rate; a USD entry has neither row
 //   - a send's person carries data-sheet-person; a payment has no such row
 //   - the day carries data-sheet-date, worded exactly as Home's day label is
+//   - (method value 3) an entry with a stored method has, directly above the
+//     Date row, a Method row whose value carries data-sheet-method and reads
+//     'Cash', 'Cheque' or 'Transfer'; an entry stored without a method has no
+//     such row and the sheet utters none of the three words
 //   - the foot offers Close and Delete at rest, side by side, and the same two
 //     while a removal is out, both disabled; a removal that could not land puts
 //     a role=alert note above those same two buttons, enabled again. Every
@@ -31,6 +35,7 @@ import { formatMvrLaari, formatRate, formatUsdCents } from '../domain/money.js'
 import {
   ENTRY_UNREMOVABLE_MESSAGE,
   type LedgerEntry,
+  type PaymentMethod,
   type RemoveEntryOutcome,
 } from '../ports/ledger-store.js'
 import { lowerSheet, raiseSheet } from './motion.js'
@@ -65,6 +70,68 @@ const renderRow = (label: string, value: string, name: string): HTMLElement => {
 }
 
 /**
+ * Method value 3: how this entry's money changed hands, named in the sheet by
+ * the same word and the same line icon the forms offer it by. The icon is
+ * decoration beside the word that already says it, so the line reads 'Method
+ * Cheque' and nothing more.
+ */
+const METHOD_WORD: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  cheque: 'Cheque',
+  transfer: 'Transfer',
+}
+
+const METHOD_PATHS: Record<PaymentMethod, readonly string[]> = {
+  cash: ['M3 7.5h18v9H3z', 'M12 10.5a1.5 1.5 0 0 0 0 3 1.5 1.5 0 0 0 0-3z'],
+  cheque: ['M3 6.5h18v11H3z', 'M6.5 10h7', 'M6.5 14h4'],
+  transfer: ['M4 9h13', 'M14 6l3 3-3 3', 'M20 15H7', 'M10 12l-3 3 3 3'],
+}
+
+const methodIcon = (method: PaymentMethod): SVGSVGElement => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('width', '14')
+  svg.setAttribute('height', '14')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2.2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.setAttribute('focusable', 'false')
+  for (const definition of METHOD_PATHS[method]) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', definition)
+    svg.append(path)
+  }
+  return svg
+}
+
+/**
+ * The Method row. It is built like every other row - a muted label and the
+ * inked value that carries the row's own name - and differs only in holding the
+ * method's icon beside its word.
+ */
+const renderMethodRow = (method: PaymentMethod): HTMLElement => {
+  const row = document.createElement('div')
+  row.className = 'sheet-row'
+
+  const key = document.createElement('span')
+  key.className = 'sheet-row-label'
+  key.textContent = 'Method'
+
+  const read = document.createElement('span')
+  read.className = 'sheet-row-value sheet-method'
+  read.dataset.sheetMethod = ''
+  const word = document.createElement('span')
+  word.textContent = METHOD_WORD[method]
+  read.append(methodIcon(method), word)
+
+  row.append(key, read)
+  return row
+}
+
+/**
  * The rows this entry has, in the order the board reads them. What an entry is
  * not never appears: a USD entry has no rufiyaa figure and no rate to show, and
  * a payment from Abbaas was paid to nobody, so neither row is built at all
@@ -85,6 +152,12 @@ const renderRows = (entry: LedgerEntry): readonly HTMLElement[] => {
   if (entry.kind === 'send' && entry.personName !== null && entry.personName !== '') {
     rows.push(renderRow('Paid to', entry.personName, 'sheetPerson'))
   }
+
+  // How the money changed hands, directly above the Date, as the board reads
+  // it. An entry stored without a method has nothing to claim here, so no row
+  // is built at all rather than built empty - the same way a USD entry has no
+  // rate row and a payment back no person.
+  if (entry.method !== null) rows.push(renderMethodRow(entry.method))
 
   // The day as Home labels it, so the same entry reads the same date in both
   // places: the words come from the one projection that words them.

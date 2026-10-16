@@ -25,7 +25,7 @@ import {
   rateFromScaled,
 } from './money.js'
 import { todayIso } from './send-draft.js'
-import type { Currency, NewEntry } from '../ports/ledger-store.js'
+import type { Currency, NewEntry, PaymentMethod } from '../ports/ledger-store.js'
 
 export type ReceiveDraft = {
   /** USD when the form opens; MVR adds the rate the owner got that day. */
@@ -36,6 +36,8 @@ export type ReceiveDraft = {
   /** YYYY-MM-DD. */
   readonly entryDate: string
   readonly note: string
+  /** How the money came back: one of the three is always chosen. */
+  readonly method: PaymentMethod
 }
 
 export const emptyReceiveDraft = (today: string = todayIso()): ReceiveDraft => ({
@@ -44,6 +46,9 @@ export const emptyReceiveDraft = (today: string = todayIso()): ReceiveDraft => (
   rateText: '',
   entryDate: today,
   note: '',
+  // A repayment arrives by cheque more often than any other way, so that is the
+  // one the form opens on; a tap moves it, and every opening starts here again.
+  method: 'cheque',
 })
 
 /**
@@ -132,5 +137,8 @@ export const receiveToNewEntry = (draft: ReceiveDraft): NewEntry | null => {
     // A receive is money back from Abbaas himself: it names nobody.
     personId: null,
     personName: null,
+    // The method the form had chosen when it was saved, which is why one payment
+    // can be stored as cash and the next as transfer.
+    method: draft.method,
   }
 }

@@ -518,6 +518,62 @@ body {
   color: var(--abbaas);
 }
 
+/* --- Method value 3: the tag on a card's amount line. ---
+
+   The amount line holds the figure at the card's own OUTER edge - the edge the
+   whole card is read from - and the method tag at its INNER edge, nearest the
+   centre line, so a send resting on Abbaas's right half reads its figure at the
+   right and wears its tag at the left, and a payment from him the other way
+   about. One DOM order is used for both: the figure is written first and the
+   row is reversed on the half that reads from the right.
+
+   A card whose entry has no method holds no tag at all, and a line with only a
+   figure in it reads exactly as the figure did on its own. */
+.entry-amount-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.entry[data-side='right'] .entry-amount-line {
+  flex-direction: row-reverse;
+}
+
+/* The tag is part of the card's resting look and carries no motion of its own:
+   it is inside the card, so the travelling-card crossing moves it with the card
+   and nothing here transitions. White at 78 % over the card's own tint, read in
+   the colour of the money - the owner's blue for a send, Abbaas's teal for a
+   payment back - so it sits in the card rather than on top of it. */
+.entry-method {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  font-family: var(--title-font);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.entry[data-kind='send'] .entry-method {
+  color: var(--you);
+}
+
+.entry[data-kind='receive'] .entry-method {
+  color: var(--abbaas);
+}
+
+.entry-method svg {
+  flex: 0 0 auto;
+}
+
 .entry-party {
   font-size: 13px;
   font-weight: 700;
@@ -1092,6 +1148,62 @@ body {
   margin-top: 2px;
 }
 
+/* --- Method value 1: how the money changed hands. ---
+
+   The same shape the currency switch is read in, so the two rows of the form
+   read as the same kind of thing: a translucent white track with the chosen
+   option sitting in it as a white pill, in the form's own deep blue. Three
+   equal thirds, each an icon beside its word. */
+
+.send-form .method-row {
+  margin-top: 22px;
+}
+
+.send-form .method-row .group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.send-form .method-track {
+  display: flex;
+  gap: 0;
+  height: 52px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.send-form .method-button {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--title-font);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* The chosen option is the white pill; the other two are white words on the
+   track. Only the colours change, so choosing lays nothing out again. */
+.send-form .method-button[aria-checked='true'] {
+  background: #ffffff;
+  color: var(--you-deep);
+  transition: background 200ms var(--curve), color 200ms var(--curve);
+}
+
+.send-form .method-button svg {
+  flex: 0 0 auto;
+}
+
 /* --- Paid to: a wrapping row of thumb-sized chips, the chosen one white. --- */
 
 .send-form .paid-to {
@@ -1397,6 +1509,69 @@ body {
 
 .receive-form .worked-value {
   color: var(--abbaas-deep);
+}
+
+/* --- Method value 2: how the money came back. ---
+
+   The send form's row in this form's own inks, so the two forms read as the
+   same thing in two colours: a translucent white track with the chosen option
+   sitting in it as a white pill, in the form's own deep teal. Three equal
+   thirds, each an icon beside its word, in a track the board draws 52 px tall -
+   the padding is inside that height, since every box in the app borders its
+   own box. */
+
+.receive-form .method-row {
+  margin-top: 22px;
+}
+
+.receive-form .group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.receive-form .method-track {
+  display: flex;
+  gap: 0;
+  height: 52px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.receive-form .method-button {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #ffffff;
+  font-family: var(--title-font);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* The chosen option is the white pill, read in the deep teal; the other two are
+   white words on the track. Only the pill behind the words travels: the words
+   themselves change ink at once, so the chosen option is never read halfway
+   between the two colours. Nothing is laid out again either way. */
+.receive-form .method-button {
+  transition: background 200ms var(--curve);
+}
+
+.receive-form .method-button[aria-checked='true'] {
+  background: #ffffff;
+  color: var(--abbaas-deep);
+}
+
+.receive-form .method-button svg {
+  flex: 0 0 auto;
 }
 
 /* --- The date chip, with the device's own picker lying over the whole of it. --- */
@@ -1981,6 +2156,23 @@ body {
   font-size: 15px;
   font-weight: 600;
   color: var(--ink);
+}
+
+/* Method value 3: the Method row's value is its icon beside its word, read at
+   the same end of the row as every other value, in the entry's own colour so
+   the sheet and the card's tag say the one thing twice. */
+.entry-sheet .sheet-method {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.entry-sheet[data-sheet-kind='send'] .sheet-method {
+  color: var(--you);
+}
+
+.entry-sheet[data-sheet-kind='receive'] .sheet-method {
+  color: var(--abbaas);
 }
 
 /* The foot: whatever it is saying - nothing, or the note that a delete did not
