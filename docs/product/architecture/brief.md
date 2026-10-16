@@ -2101,6 +2101,7 @@ Let the owner say how a payment from Abbaas came in, Cheque unless they pick Cas
 ### Targets
 | Path | Decision | Reason |
 |---|---|---|
+| `src/domain/receive-draft.ts` | EXTEND | ReceiveDraft carries the chosen method, emptyReceiveDraft starts on cheque, and receiveToNewEntry puts it into the NewEntry. |
 | `src/ui/receive-form.ts` | EXTEND | The Method radio group under the amount and above the date, Cheque chosen; its choice goes into the NewEntry. |
 | `src/ui/theme.css` | EXTEND | The Receive form's Method row, with #0b5750 on the chosen pill. |
 
@@ -2109,6 +2110,7 @@ functional
 
 ### Decisions
 - Value 1 has already added entries.method, PaymentMethod and the adapter's read and write of it, and the Send form's Method row; this value reuses them.
+- src/domain/receive-draft.ts: ReceiveDraft gains method: PaymentMethod; emptyReceiveDraft() returns method 'cheque'; receiveToNewEntry copies draft.method into the NewEntry instead of the null value 1 left there.
 - The Receive form shows, after the amount block (and its MVR rate row) and before the date chip, the same Method label and 52 px track as the Send form, with the chosen pill's text #0b5750; the same role=radiogroup named Method, role=radio buttons Cash, Cheque, Transfer with aria-checked and data-method.
 - The Receive form opens with Cheque chosen every time; tapping an option chooses it; exactly one is always chosen; switching USD/MVR keeps it.
 - Saving a payment puts the chosen method into NewEntry.method; everything else about saving stays as integrated.
@@ -2118,6 +2120,7 @@ functional
 |---|---|---|---|
 | onSave | `src/ui/receive-form.ts:409` | REUSE | The save path already hands a NewEntry to onSave; it only gains the method. |
 | renderReceiveForm | `src/ui/receive-form.ts:170` | EXTEND | The form gains the Method row. |
+| receiveToNewEntry | `src/domain/receive-draft.ts:114` | EXTEND | The one constructor of a payment's NewEntry takes the draft's method. |
 
 ### Prefactoring
 Not applicable: The forms, the store and the cards are extended in place; nothing must move first.
