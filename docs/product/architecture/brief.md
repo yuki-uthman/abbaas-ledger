@@ -2406,3 +2406,80 @@ Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.
 Verification command: `npm run test:acceptance -- tests/acceptance/send-method.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/receive-method.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/entry-method.spec.ts`
+## Third line value 3: an MVR send without the MVR figure on its card
+
+### Purpose
+An MVR send keeps every stored figure; Home shows only its dollars, person and method, and the sheet keeps the rufiyaa and the rate.
+
+### Constraints
+- The visual reference is the Home artboard of the design board https://claude.ai/artifact/729zVXtrBTxsNAvjVzAfZa as revised on 2026-10-16: each card reads its amount, then its person (to <name>) or from Abbaas, then its method's icon and word; no currency detail. The app's tokens in src/ui/theme.css stay (page #f4f7f6, ink #0d1f1c, muted #4c5f5b, You blue #24508a, Abbaas teal #0f6f68, Manrope for figures, Source Sans 3 for text). Light theme only.
+- The attribute contract integrated at edf9bd1 stays in force and every acceptance spec not rewritten by this Request keeps passing: data-box, data-state, data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-side (left for a payment, right for a send), data-kind, data-action, data-form, data-person-chip, data-prefix, data-usd, data-motion, data-spine; the sheet's data-entry-sheet, data-sheet-scrim, data-sheet-usd, data-sheet-mvr, data-sheet-rate, data-sheet-person, data-sheet-method, data-sheet-date, data-sheet-delete, data-sheet-close, data-sheet-actions; the forms' Method radio group (role=radiogroup named Method, role=radio Cash/Cheque/Transfer with data-method and aria-checked; Send opens on Transfer, Receive on Cheque).
+- The card contract after this Request, shared by all three values: a Home card (the element carrying data-entry) holds, in this order, the amount (e.g. '$500.00', the only content of its first line), the party line ('to <person>' for a send, 'from Abbaas' for a payment), and, only when the stored method is not null, one element carrying data-entry-method='cash'|'cheque'|'transfer' whose text is exactly 'Cash', 'Cheque' or 'Transfer' with an icon before it. The card's text contains neither 'Paid in USD' nor 'MVR' nor ' at <rate>'. The card's box contains every one of its children's boxes (nothing overflows) at viewport widths 360 and 390.
+- Seeding: tests/support/accounts.ts seedHistory stores entries with a null method; a spec that needs a stored method seeds it itself through @supabase/supabase-js createClient(stack.apiUrl, stack.serviceRoleKey) on public.entries, or saves through the forms (Send defaults to transfer, Receive to cheque).
+- No schema, policy or store change.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `src/ui/home.ts` | EXTEND | detailOf, which only fed the removed detail line, is deleted with its imports. |
+
+### Paradigm
+functional
+
+### Decisions
+- Saving an MVR send is unchanged: amount_minor in laari, the rate, usd_cents, the person and the method (transfer unless tapped otherwise) are stored.
+- Home's card for it reads the dollar amount, 'to <person>' and the method line, and no MVR figure or rate.
+- The sheet keeps data-sheet-mvr (e.g. 'MVR 10,000') and data-sheet-rate (e.g. '20.00') as integrated.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| detailOf | `src/ui/home.ts:121` | EXTEND | Nothing reads it once the detail line is gone. |
+
+### Prefactoring
+Not applicable: The card is changed in place.
+
+### Agreement analysis
+Not applicable: No port or outcome shape changes.
+
+### Boundaries
+- Driving port: The built bundle's DOM: Home's entry cards and the entry sheet.
+- Driven port: LedgerStore: entries read over PostgREST under row-level security.
+- Dependency direction: UI modules depend on port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: The ledger cannot be read. | Outcome: Retry | Observation: Home shows Could not load the ledger. Try again., as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Saving an MVR send still stores the MVR amount, the rate and the USD value; once Home rests its card reads $500.00, the person and Transfer, with no MVR figure, wholly right of the centre line, and its sheet reads MVR 10,000 and the rate 20.00.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account with one saved person; a Chromium context at 390 by 844 signs in, opens Send, switches to MVR, enters MVR 10,000 and the rate 20.00, chooses the saved person, saves, and waits until the form has left, the new card exists and no element carries data-motion; then it taps the card and waits for rest.
+
+Expected: Every assertion of the integrated send-mvr spec about the form, the worked dollars, storage (amount_minor 1000000, rate 20, usd_cents 50000, currency MVR) and the card resting wholly right of the centre line holds as before; the card's text contains '$500.00', the person and 'Transfer' and does not contain 'MVR' or '20.00'; the service role reads method 'transfer'; the sheet's data-sheet-mvr reads MVR 10,000 and data-sheet-rate 20.00.
+
+Falsifier: An MVR figure or rate on the card, a lost MVR amount or rate in storage or in the sheet, or a card off Abbaas's side fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-mvr.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-method.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive-method.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-method.spec.ts`
