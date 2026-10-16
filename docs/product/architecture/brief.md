@@ -2013,6 +2013,8 @@ Let the owner say how a send moved, Transfer unless they pick Cash or Cheque, an
 | `supabase/migrations/0002_entry_method.sql` | CREATE_NEW | Adds the nullable entries.method column limited to cash, cheque and transfer. |
 | `src/ports/ledger-store.ts` | EXTEND | PaymentMethod type; method on LedgerEntry and NewEntry. |
 | `src/adapters/supabase/ledger-store.ts` | EXTEND | Reads and writes the method column. |
+| `src/domain/send-draft.ts` | EXTEND | SendDraft carries the chosen method, emptySendDraft starts on transfer, and draftToNewEntry puts it into the NewEntry. |
+| `src/domain/receive-draft.ts` | EXTEND | receiveToNewEntry sets method: null so NewEntry stays complete; value 2 gives the Receive draft its own method. |
 | `src/ui/send-form.ts` | EXTEND | The Method radio group under the amount block and above Paid to, Transfer chosen; its choice goes into the NewEntry. |
 | `src/ui/theme.css` | EXTEND | The Method row's track, pill and icons. |
 
@@ -2022,6 +2024,7 @@ functional
 ### Decisions
 - supabase/migrations/0002_entry_method.sql: alter table public.entries add column method text null, with constraint entries_method_known check (method is null or method in ('cash', 'cheque', 'transfer')). No default, so rows saved before it keep null.
 - src/ports/ledger-store.ts exports type PaymentMethod = 'cash' | 'cheque' | 'transfer'; LedgerEntry.method and NewEntry.method are PaymentMethod | null.
+- src/domain/send-draft.ts: SendDraft gains method: PaymentMethod; emptySendDraft() returns method 'transfer'; draftToNewEntry copies draft.method into the NewEntry. src/domain/receive-draft.ts: receiveToNewEntry returns method: null in this value, so a payment is stored with a null method until value 2.
 - The Supabase adapter adds method to COLUMNS, to toEntry and to toEntryRow.
 - The Send form shows, after the USD note slot and the MVR rate row and before Paid to, a label 'Method' (13 px, weight 600, white) and under it a 52 px track (padding 4 px, radius 16 px, white at 12 % opacity) with three equal buttons: a stroke icon (banknote, cheque, two opposed arrows) and the word Cash, Cheque or Transfer, Manrope 800 14 px. The chosen button is a white pill (radius 12 px) with #1b3f6e text; the others are white text on the track. The group is role=radiogroup aria-labelledby the label; each button is role=radio with aria-checked and data-method.
 - The Send form opens with Transfer chosen every time; tapping an option chooses it and unchooses the others; exactly one is always chosen. Switching USD/MVR keeps the chosen method.
@@ -2035,6 +2038,8 @@ functional
 | toEntryRow | `src/adapters/supabase/ledger-store.ts:73` | EXTEND | The inserted row gains method. |
 | currencyButton | `src/ui/send-form.ts:173` | EXTEND | The Method options are built the way the currency buttons are. |
 | onSave | `src/ui/send-form.ts:555` | REUSE | The save path already hands a NewEntry to onSave; it only gains the method. |
+| draftToNewEntry | `src/domain/send-draft.ts:92` | EXTEND | The one constructor of a send's NewEntry gains the method. |
+| receiveToNewEntry | `src/domain/receive-draft.ts:114` | EXTEND | The one constructor of a payment's NewEntry must name method to type-check. |
 
 ### Prefactoring
 Not applicable: The forms, the store and the cards are extended in place; nothing must move first.
