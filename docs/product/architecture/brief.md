@@ -1995,3 +1995,89 @@ Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spe
 Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
 Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
+## Method value 1: the Send form's Method row, stored
+
+### Purpose
+Let the owner say how a send moved, Transfer unless they pick Cash or Cheque, and store it with the entry.
+
+### Constraints
+- The visual reference is the design board https://claude.ai/artifact/729zVXtrBTxsNAvjVzAfZa (artboards Send, Receive, Home and Entry sheet) as approved by the owner on 2026-10-16. The app's tokens in src/ui/theme.css stay: page #f4f7f6, ink #0d1f1c, muted #4c5f5b, You blue #24508a with deep #1b3f6e, Abbaas teal #0f6f68 with deep #0b5750, hairline #cfd9d6, Manrope for titles and figures, Source Sans 3 for text, the one curve --curve. Light theme only.
+- The attribute contract integrated at 112e554 stays in force and every existing acceptance spec keeps passing: Home's data-box with data-state and data-amount, data-square, data-total (sent/paid), data-count, data-day, data-entry, data-person, data-after, data-after-holder, data-action (send/receive), data-form, data-person-chip, data-prefix, data-usd, data-motion, data-spine; the sheet's data-entry-sheet, data-sheet-scrim, data-sheet-usd, data-sheet-mvr, data-sheet-rate, data-sheet-person, data-sheet-date, data-sheet-delete, data-sheet-close, data-sheet-actions.
+- The method contract this Request adds, shared by all three values: the database column public.entries.method is text, nullable, with a check that it is one of 'cash', 'cheque', 'transfer', added by supabase/migrations/0002_entry_method.sql; LedgerEntry and NewEntry in src/ports/ledger-store.ts carry method: 'cash' | 'cheque' | 'transfer' | null (NewEntry's is never null from the forms). In each form the Method control is one element with role=radiogroup whose accessible name is 'Method', holding exactly three buttons with role=radio, accessible names 'Cash', 'Cheque' and 'Transfer' in that order, data-method='cash'|'cheque'|'transfer', and aria-checked='true' on exactly one. On Home a card whose entry has a method holds one element data-entry-method='<stored word>' whose text is 'Cash', 'Cheque' or 'Transfer'; a card whose method is null holds none. In the sheet the Method line carries data-sheet-method and reads 'Method' and the word; it is absent when the method is null.
+- The acceptance support (tests/support/accounts.ts) reads and seeds entries without the method column; a spec that must read or seed method does so itself through @supabase/supabase-js createClient(stack.apiUrl, stack.serviceRoleKey) on the entries table, filtered by the account's user_id, or through the bundle's own forms.
+- No policy change: the existing entries policies and grants cover the new column. The migration is applied to the local stack by the acceptance support's db reset; pushing it to the cloud project is the owner's step after integration.
+
+### Targets
+| Path | Decision | Reason |
+|---|---|---|
+| `supabase/migrations/0002_entry_method.sql` | CREATE_NEW | Adds the nullable entries.method column limited to cash, cheque and transfer. |
+| `src/ports/ledger-store.ts` | EXTEND | PaymentMethod type; method on LedgerEntry and NewEntry. |
+| `src/adapters/supabase/ledger-store.ts` | EXTEND | Reads and writes the method column. |
+| `src/ui/send-form.ts` | EXTEND | The Method radio group under the amount block and above Paid to, Transfer chosen; its choice goes into the NewEntry. |
+| `src/ui/theme.css` | EXTEND | The Method row's track, pill and icons. |
+
+### Paradigm
+functional
+
+### Decisions
+- supabase/migrations/0002_entry_method.sql: alter table public.entries add column method text null, with constraint entries_method_known check (method is null or method in ('cash', 'cheque', 'transfer')). No default, so rows saved before it keep null.
+- src/ports/ledger-store.ts exports type PaymentMethod = 'cash' | 'cheque' | 'transfer'; LedgerEntry.method and NewEntry.method are PaymentMethod | null.
+- The Supabase adapter adds method to COLUMNS, to toEntry and to toEntryRow.
+- The Send form shows, after the USD note slot and the MVR rate row and before Paid to, a label 'Method' (13 px, weight 600, white) and under it a 52 px track (padding 4 px, radius 16 px, white at 12 % opacity) with three equal buttons: a stroke icon (banknote, cheque, two opposed arrows) and the word Cash, Cheque or Transfer, Manrope 800 14 px. The chosen button is a white pill (radius 12 px) with #1b3f6e text; the others are white text on the track. The group is role=radiogroup aria-labelledby the label; each button is role=radio with aria-checked and data-method.
+- The Send form opens with Transfer chosen every time; tapping an option chooses it and unchooses the others; exactly one is always chosen. Switching USD/MVR keeps the chosen method.
+- Saving a send puts the chosen method into NewEntry.method; everything else about saving, the Retry and the travelling-card motion stays as integrated.
+- The form still fits a 360 by 780 phone as integrated: if the added row would push Save below the fold, the form's content area scrolls and Save stays where it is integrated.
+
+### Reuse analysis
+| Symbol | Locator | Decision | Reason |
+|---|---|---|---|
+| COLUMNS | `src/adapters/supabase/ledger-store.ts:25` | EXTEND | The selected columns gain method. |
+| toEntryRow | `src/adapters/supabase/ledger-store.ts:73` | EXTEND | The inserted row gains method. |
+| currencyButton | `src/ui/send-form.ts:173` | EXTEND | The Method options are built the way the currency buttons are. |
+| onSave | `src/ui/send-form.ts:555` | REUSE | The save path already hands a NewEntry to onSave; it only gains the method. |
+
+### Prefactoring
+Not applicable: The forms, the store and the cards are extended in place; nothing must move first.
+
+### Agreement analysis
+Not applicable: The store's outcome shapes are unchanged; LedgerEntry and NewEntry gain one field whose values are named in the method contract.
+
+### Boundaries
+- Driving port: The built bundle's DOM: the Send and Receive forms, Home's entry cards and the entry sheet.
+- Driven port: LedgerStore: entries read and deleted over PostgREST under row-level security.
+- Dependency direction: UI modules depend on port types; the Supabase adapter implements the port; main.ts composes them.
+- Failure: Condition: The insert cannot reach the server. | Outcome: Retry | Observation: The form stays open with Could not save. Try again. and nothing is stored, as integrated.
+
+### Acceptance supports
+- `tests/support/local-stack.ts`
+- `tests/support/accounts.ts`
+- `tests/playwright.config.ts`
+
+### Public oracle
+Observation: Opening the blue Send form shows a Method row of Cash, Cheque and Transfer under the amount and above Paid to with Transfer chosen; saving a send stores transfer, or the method tapped instead, with the entry, in USD and in MVR.
+
+Stimulus: The acceptance support starts the local stack, builds and serves the bundle and creates an account with one saved person Mariyam Nisha through the service role; a Chromium context at 390 by 844 signs in and waits until no element carries data-motion. It opens Send, reads the Method group, saves a USD send of $120.00 to Mariyam Nisha without touching Method; opens Send again, taps Cash, switches to MVR, enters MVR 3,000 at 20.00 to Mariyam Nisha and saves; opens Send again, taps Cheque and saves a USD send of $40.00 to Mariyam Nisha. After each save it waits until the form has left, the new card exists and no element carries data-motion.
+
+Expected: On opening, the Send form has one role=radiogroup named Method placed after the amount field and before the Paid to group, with radios Cash, Cheque, Transfer in that order and only Transfer aria-checked=true; after tapping Cash only Cash is checked, and it stays checked across the USD/MVR switch. The service role then reads three entries, oldest first, with method 'transfer', 'cash' and 'cheque' respectively, each with its amount, currency and person as saved.
+
+Falsifier: Transfer not chosen on opening, more or less than one radio checked, a method lost on the currency switch, or a stored method other than the one chosen fails the check.
+
+### Oracle and verification
+Oracle target locator: `tests/acceptance/send-method.spec.ts`
+
+Verification command: `npm ci`
+Verification command: `npx playwright install chromium`
+Verification command: `npm run build`
+Verification command: `npm run test:acceptance -- tests/acceptance/empty-home.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/sign-in-and-own-ledger.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-list.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-usd.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-mvr.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/receive.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/undo.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/motion.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entrances.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/layout-and-install.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/entry-sheet.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/delete-entry.spec.ts`
+Verification command: `npm run test:acceptance -- tests/acceptance/send-method.spec.ts`
