@@ -26,6 +26,12 @@ import { createAccount, seedHistory, type Account, type EntrySeed } from '../sup
 // an arrow character. The totals read 'You received $…' on the left and
 // 'Abbaas received $…' on the right.
 
+// This revision drops the currency detail from the cards. A card reads its
+// amount, then its person ('to <name>') or 'from Abbaas', then its method only
+// when one is stored. seedHistory stores a null method for every entry here, so
+// every card below is a two-line card: no card's text may carry 'Paid in USD',
+// 'MVR' or ' at 20.00', and no card may hold a data-entry-method element.
+
 const PASSWORD_FIELD = 'input[type="password"]'
 
 const LIST_ACCOUNT = {
@@ -127,7 +133,6 @@ const ENTRIES: readonly {
   readonly kind: 'send' | 'payment'
   readonly amount: string
   readonly party: string
-  readonly detail: string
   readonly after: string
   readonly afterText: string
   readonly tint: string
@@ -137,7 +142,6 @@ const ENTRIES: readonly {
     kind: 'send',
     amount: '$340.00',
     party: AHMED,
-    detail: 'Paid in USD',
     after: '79000',
     afterText: 'Abbaas has $790.00',
     tint: SEND_TINT,
@@ -147,7 +151,6 @@ const ENTRIES: readonly {
     kind: 'payment',
     amount: '$300.00',
     party: 'from Abbaas',
-    detail: 'Paid in USD',
     after: '45000',
     afterText: 'Abbaas has $450.00',
     tint: PAYMENT_TINT,
@@ -157,7 +160,6 @@ const ENTRIES: readonly {
     kind: 'send',
     amount: '$500.00',
     party: AHMED,
-    detail: 'MVR 10,000 at 20.00',
     after: '75000',
     afterText: 'Abbaas has $750.00',
     tint: SEND_TINT,
@@ -167,7 +169,6 @@ const ENTRIES: readonly {
     kind: 'send',
     amount: '$250.00',
     party: MARIYAM,
-    detail: 'Paid in USD',
     after: '25000',
     afterText: 'Abbaas has $250.00',
     tint: SEND_TINT,
@@ -229,7 +230,7 @@ const styleOf = (locator: Locator, property: string): Promise<string> =>
     property,
   )
 
-test('Home at rest is the travelling-cards board: no title, boxes on top, an Entries count, sends right of the line and payments left at every width, a dot and no arrow on each row, and the received totals under the boxes', async ({
+test('Home at rest is the travelling-cards board: no title, boxes on top, an Entries count, sends right of the line and payments left at every width, a dot and no arrow on each row, no currency detail on any card, and the received totals under the boxes', async ({
   page,
 }) => {
   await signIn(page)
@@ -401,7 +402,13 @@ test('Home at rest is the travelling-cards board: no title, boxes on top, an Ent
     const groupText = squashed(await page.locator(`[data-day="${date}"]`).innerText())
     expect(groupText, `the ${date} rows carry no right arrow`).not.toContain('→')
     expect(groupText, `the ${date} rows carry no left arrow`).not.toContain('←')
+    expect(groupText, `the ${date} rows carry no currency detail`).not.toContain('Paid in USD')
+    expect(groupText, `the ${date} rows carry no rufiyaa detail`).not.toContain('MVR')
   }
+
+  // The whole board, not only the cards, is free of method lines: every seeded
+  // entry has a null method.
+  await expect(page.locator('[data-entry-method]')).toHaveCount(0)
 
   // The after-balances read down the list in the same newest-first order; they
   // carry data-after and sit beside their card, not on it.
@@ -419,7 +426,19 @@ test('Home at rest is the travelling-cards board: no title, boxes on top, an Ent
     const text = squashed(await card.innerText())
     expect(text, `entry ${index} amount`).toContain(expected.amount)
     expect(text, `entry ${index} party`).toContain(expected.party)
-    expect(text, `entry ${index} detail`).toContain(expected.detail)
+
+    // No card carries a currency detail any more: the detail line is gone, so a
+    // card reads its amount, its party, and its method only when one is stored.
+    expect(text, `entry ${index} shows no USD detail`).not.toContain('Paid in USD')
+    expect(text, `entry ${index} shows no rufiyaa figure`).not.toContain('MVR')
+    expect(text, `entry ${index} shows no rate`).not.toContain(' at 20.00')
+
+    // Every entry here was seeded through seedHistory, which stores a null
+    // method, so no card may grow a third line.
+    await expect(
+      card.locator('[data-entry-method]'),
+      `entry ${index} has no method line, its stored method being null`,
+    ).toHaveCount(0)
 
     // A send names the person it was paid to; a payment comes from Abbaas himself.
     const isSend = expected.kind === 'send'
