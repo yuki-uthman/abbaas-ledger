@@ -84,10 +84,18 @@
 // it:
 //   - a card whose entry has a stored method holds exactly one element carrying
 //     data-entry-method="<the stored word>", reading 'Cash', 'Cheque' or
-//     'Transfer', on the card's amount line at its inner edge - nearest the
-//     centre line - with the figure left on the card's outer edge
+//     'Transfer'
 //   - a card whose entry has no method holds no such element and utters none of
 //     the three words
+//
+// Third line value 1 settles WHERE that element is read and what it replaces:
+// the card is three lines, one under the other, each read from the card's own
+// outer edge - the amount ALONE on the first, the party on the second, and the
+// method on the third when there is one. It takes the currency detail line's
+// place: 'Paid in USD' and 'MVR <amount> at <rate>' are no longer drawn on Home
+// at all, because the sheet a tap on the card opens is where the rufiyaa figure
+// and its rate are named. A card whose method is null is two lines and nothing
+// more.
 // The tag is read, never written: Home still writes nothing and reads nothing
 // but the ledger it was handed.
 import { balanceOf, boxFor, type Balance } from '../domain/balance.js'
@@ -98,7 +106,7 @@ import {
   splitAmount,
   type ListedEntry,
 } from '../domain/ledger-view.js'
-import { formatMvrLaari, formatRate, formatUsdCents } from '../domain/money.js'
+import { formatUsdCents } from '../domain/money.js'
 import type { LedgerEntry, PaymentMethod, ReadEntriesOutcome } from '../ports/ledger-store.js'
 import {
   CROSS_START_MS,
@@ -113,28 +121,20 @@ import {
 
 export { formatUsdCents }
 
-/**
- * The detail line under the USD amount: an MVR entry names the rufiyaa figure
- * and the rate it was got at ('MVR 10,000 at 20.00'); a USD one reads
- * 'Paid in USD'.
- */
-const detailOf = (entry: LedgerEntry): string => {
-  if (entry.currency === 'USD') return 'Paid in USD'
-  const amount = formatMvrLaari(entry.amountMinor)
-  // A stored MVR row always carries its rate; without one there is nothing to
-  // claim beyond the rufiyaa figure.
-  if (entry.rate === null) return `MVR ${amount}`
-  return `MVR ${amount} at ${formatRate(entry.rate)}`
-}
+/* The currency detail line is gone from Home: no 'Paid in USD', no rufiyaa
+   figure and no rate is built here, which is why nothing in this file reads
+   entry.currency, entry.amountMinor or entry.rate any more. Those figures are
+   named on the entry's sheet, which is the one place they are claimed now. */
 
 /**
- * Method value 3: the tag a card wears when its entry has a stored method.
+ * Method value 3, placed by third line value 1: the third line a card reads
+ * when its entry has a stored method.
  *
  * It is part of the card's resting look and nothing else: it is drawn where the
  * card rests, carries no motion of its own, and the travelling-card motion moves
  * it with the card because it is inside the card. An entry stored WITHOUT a
- * method carries no tag at all - a null method is nothing said, never a default -
- * so the card reads exactly as it did before any of this.
+ * method carries no line at all - a null method is nothing said, never a
+ * default - so such a card is its amount and its party and nothing else.
  */
 const METHOD_WORD: Record<PaymentMethod, string> = {
   cash: 'Cash',
@@ -143,7 +143,7 @@ const METHOD_WORD: Record<PaymentMethod, string> = {
 }
 
 /**
- * The same three line icons the forms offer the method by, drawn here at 11 px:
+ * The same three line icons the forms offer the method by, drawn here at 12 px:
  * a note with a coin for cash, a slip with its signature rule for a cheque, and
  * two arrows passing each other for a transfer. Each is decoration beside the
  * word that already says the same thing, so it is hidden from the reading order.
@@ -157,8 +157,8 @@ const METHOD_PATHS: Record<PaymentMethod, readonly string[]> = {
 const methodIcon = (method: PaymentMethod): SVGSVGElement => {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 24 24')
-  svg.setAttribute('width', '11')
-  svg.setAttribute('height', '11')
+  svg.setAttribute('width', '12')
+  svg.setAttribute('height', '12')
   svg.setAttribute('fill', 'none')
   svg.setAttribute('stroke', 'currentColor')
   svg.setAttribute('stroke-width', '2.2')
@@ -175,17 +175,19 @@ const methodIcon = (method: PaymentMethod): SVGSVGElement => {
 }
 
 /**
- * The tag itself: the stored word is what the owner reads, and the stored token
- * is what names the element, so the tag's text is 'Cash' and never 'cash'.
+ * The line itself: the stored word is what the owner reads, and the stored token
+ * is what names the element, so the line's text is 'Cash' and never 'cash'. The
+ * icon comes first and says the same thing, so it is the only thing before the
+ * word and nothing else is in the line at all.
  */
-const renderMethodTag = (method: PaymentMethod): HTMLElement => {
-  const tag = document.createElement('span')
-  tag.className = 'entry-method'
-  tag.dataset.entryMethod = method
+const renderMethodLine = (method: PaymentMethod): HTMLElement => {
+  const line = document.createElement('span')
+  line.className = 'entry-method'
+  line.dataset.entryMethod = method
   const word = document.createElement('span')
   word.textContent = METHOD_WORD[method]
-  tag.append(methodIcon(method), word)
-  return tag
+  line.append(methodIcon(method), word)
+  return line
 }
 
 const renderEntry = (listed: ListedEntry<LedgerEntry>): HTMLElement => {
@@ -235,17 +237,6 @@ const renderEntry = (listed: ListedEntry<LedgerEntry>): HTMLElement => {
   amount.className = 'entry-amount'
   amount.textContent = formatUsdCents(entry.usdCents)
 
-  // The amount line: the figure keeps the card's own OUTER edge, the edge the
-  // whole card is read from, and the method tag - when there is one - takes the
-  // inner edge, nearest the centre line, so the two never trade places. Which
-  // end is which is drawn from data-side in theme.css; the line is built the one
-  // way whether or not a method was stored, so a card without one is exactly the
-  // card it was, holding its figure alone.
-  const amountLine = document.createElement('div')
-  amountLine.className = 'entry-amount-line'
-  amountLine.append(amount)
-  if (entry.method !== null) amountLine.append(renderMethodTag(entry.method))
-
   const party = document.createElement('span')
   party.className = 'entry-party'
   if (entry.kind === 'send') {
@@ -266,10 +257,6 @@ const renderEntry = (listed: ListedEntry<LedgerEntry>): HTMLElement => {
     party.textContent = 'from Abbaas'
   }
 
-  const detail = document.createElement('span')
-  detail.className = 'entry-detail'
-  detail.textContent = detailOf(entry)
-
   // Who holds what after this entry, read across the line from the money that
   // caused it: teal when Abbaas holds, blue when the owner does, grey at square.
   const after = document.createElement('span')
@@ -281,7 +268,12 @@ const renderEntry = (listed: ListedEntry<LedgerEntry>): HTMLElement => {
   after.dataset.after = String(listed.afterCents)
   after.textContent = listed.afterText
 
-  body.append(amountLine, party, detail)
+  // The card's three lines, one under the other: the amount alone, the party,
+  // and the method when one was stored - which takes the place the currency
+  // detail used to hold. A card with no stored method appends nothing third, so
+  // it is two lines and utters none of the three words.
+  body.append(amount, party)
+  if (entry.method !== null) body.append(renderMethodLine(entry.method))
   element.append(body, nodeCell, after)
   return element
 }

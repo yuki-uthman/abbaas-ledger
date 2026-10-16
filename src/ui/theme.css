@@ -518,55 +518,52 @@ body {
   color: var(--abbaas);
 }
 
-/* --- Method value 3: the tag on a card's amount line. ---
+/* --- Third line value 1: the method is the card's THIRD line, in the place the
+       currency detail used to hold. ---
 
-   The amount line holds the figure at the card's own OUTER edge - the edge the
-   whole card is read from - and the method tag at its INNER edge, nearest the
-   centre line, so a send resting on Abbaas's right half reads its figure at the
-   right and wears its tag at the left, and a payment from him the other way
-   about. One DOM order is used for both: the figure is written first and the
-   row is reversed on the half that reads from the right.
+   The amount is alone on the first line - no pill rides beside it any more -
+   the party is on the second, and this is the third: a plain inline line, not a
+   pill, read from the card's own OUTER edge like the two lines above it, so the
+   three of them line up down that edge. The stroke icon is the money's own
+   colour, the word the app's muted grey, which is exactly the ink the detail
+   line was read in: the line is the same weight on the card as the one it
+   replaces.
 
-   A card whose entry has no method holds no tag at all, and a line with only a
-   figure in it reads exactly as the figure did on its own. */
-.entry-amount-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.entry[data-side='right'] .entry-amount-line {
-  flex-direction: row-reverse;
-}
-
-/* The tag is part of the card's resting look and carries no motion of its own:
-   it is inside the card, so the travelling-card crossing moves it with the card
-   and nothing here transitions. White at 78 % over the card's own tint, read in
-   the colour of the money - the owner's blue for a send, Abbaas's teal for a
-   payment back - so it sits in the card rather than on top of it. */
+   It carries no motion of its own: it is inside the card, so the
+   travelling-card crossing moves it with the card and nothing here transitions.
+   A card whose entry has no method has no such line, and the card is then its
+   amount and its party alone. */
 .entry-method {
-  flex: 0 0 auto;
+  /* Shrunk to its own content and held against the card's outer edge, which is
+     the end the card's text is read from: the line never stretches across the
+     card, so the icon sits immediately before its word. */
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  font-family: var(--title-font);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--muted);
   white-space: nowrap;
 }
 
-.entry[data-kind='send'] .entry-method {
+/* A send rests on Abbaas's right half and is read from the right, so its method
+   line is held against that edge; a payment from him rests left and reads from
+   the left, which is the default above. */
+.entry[data-side='right'] .entry-method {
+  align-self: flex-end;
+}
+
+/* The icon is the card's own colour - the owner's blue for a send, Abbaas's teal
+   for a payment back - while the word stays muted, so the line is tied to the
+   money without shouting over the figure above it. */
+.entry[data-kind='send'] .entry-method svg {
   color: var(--you);
 }
 
-.entry[data-kind='receive'] .entry-method {
+.entry[data-kind='receive'] .entry-method svg {
   color: var(--abbaas);
 }
 
@@ -579,10 +576,9 @@ body {
   font-weight: 700;
 }
 
-.entry-detail {
-  font-size: 12px;
-  color: var(--muted);
-}
+/* The currency detail line is gone from Home, so no shape is declared for it:
+   nothing can draw 'Paid in USD' or a rufiyaa figure on a card under another
+   name. The sheet is where those figures are read. */
 
 /* --- Value 6: the day groups, and what each entry leaves behind it. --- */
 
