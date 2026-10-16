@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
 import {
   ORIGIN,
   buildBundle,
@@ -9,13 +10,23 @@ import {
 } from '../support/local-stack.js'
 import { createAccount, readEntries, seedPerson, type Account } from '../support/accounts.js'
 
-// Refined board value 3: sending in rufiyaa on the reworked send form.
+// Third line value 3: an MVR send without the MVR figure on its card.
 //
 // Judged through the declared public port only: the built bundle's DOM (the
 // currency switch with its sliding data-pill, data-prefix, the 'Rate · MVR per $1'
-// card beside the white 'In dollars' card with its data-usd output, the white
-// 'Send · $X' button, Home's centre-line card and the balance boxes) and, outside
-// the browser, the row the app stored.
+// card beside the white 'In dollars' card with its data-usd output, the Method
+// radio group, the white 'Send · $X' button, Home's centre-line card with its
+// three lines, the entry's sheet and the balance boxes) and, outside the browser,
+// the row the app stored.
+//
+// The rufiyaa figure and the rate are kept where they belong: in storage and on
+// the sheet. They are no longer drawn on the card, whose lines are the amount,
+// the person and the method.
+//
+// The stored method is read here rather than through tests/support/accounts.ts,
+// because that support reads entries without the method column; this spec opens
+// its own service-role client on the entries table, filtered by the account's
+// user_id, as the seeding contract directs.
 
 const PASSWORD_FIELD = 'input[type="password"]'
 const VIEWPORT = { width: 390, height: 844 } as const
@@ -50,6 +61,22 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await served?.close()
 })
+
+/** The method the app stored, which no support helper reads back. */
+const readStoredMethods = async (): Promise<readonly (string | null)[]> => {
+  const admin = createClient(stack.apiUrl, stack.serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+  const { data, error } = await admin
+    .from('entries')
+    .select('method')
+    .eq('user_id', account.userId)
+    .order('saved_at', { ascending: true })
+  if (error || !data) {
+    throw new Error(`Could not read the stored methods: ${error?.message ?? 'no rows returned'}`)
+  }
+  return data.map((row) => (row.method as string | null) ?? null)
+}
 
 const signIn = async (page: Page): Promise<void> => {
   await page.goto(ORIGIN)
@@ -124,7 +151,7 @@ const pillStill = async (page: Page): Promise<void> => {
   }).toPass()
 }
 
-test('MVR slides the pill and opens the rate card beside In dollars, and the worked-out dollars reach the button, Home and the store', async ({
+test('MVR slides the pill and opens the rate card beside In dollars; the worked-out dollars reach the button, the card and the store, while the card names only the dollars, the person and the method and the rufiyaa figure and rate stay on the sheet', async ({
   page,
 }) => {
   await signIn(page)
@@ -217,12 +244,21 @@ test('MVR slides the pill and opens the rate card beside In dollars, and the wor
   await chip.click()
   await expect(chip).toHaveAttribute('aria-pressed', 'true')
 
+  // Method is left untouched, so this send is a Transfer: that is what the card's
+  // third line and the stored row are read against below.
+  const methodGroup = form.getByRole('radiogroup', { name: 'Method' })
+  await expect(methodGroup.locator('[role="radio"][aria-checked="true"]')).toHaveCount(1)
+  await expect(methodGroup.locator('[data-method="transfer"]')).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
+
   // The button's name follows the worked-out dollars, not the rufiyaa figure.
   const save = page.getByRole('button', { name: 'Send · $500.00' })
   await expect(save).toBeEnabled()
   await save.click()
 
-  // ----- Home: the card reads its detail under its USD amount, right of the line. -----
+  // ----- Home: the card reads its dollars, its person and its method, right of the line. -----
   // The save is first waited for to have been answered by Home (the form gone
   // and the new card present), and only then for the Saved message, Home's
   // growth, the counting balance and the card's crossing to have come to rest.
@@ -232,8 +268,19 @@ test('MVR slides the pill and opens the rate card beside In dollars, and the wor
   const entries = page.locator('[data-entry]')
   const entry = entries.first()
   await expect(entry).toContainText('$500.00')
-  await expect(entry).toContainText('MVR 10,000 at 20.00')
   await expect(entry).toContainText(SAVED_PERSON)
+
+  // The third line is the method, with its word exactly, and there is one of it.
+  const methodLine = entry.locator('[data-entry-method]')
+  await expect(methodLine).toHaveCount(1)
+  await expect(methodLine).toHaveAttribute('data-entry-method', 'transfer')
+  await expect(methodLine).toHaveText('Transfer')
+
+  // The rufiyaa figure and the rate are not on the card at all: they belong to
+  // the sheet, which is read further down.
+  await expect(entry).not.toContainText('MVR')
+  await expect(entry).not.toContainText('20.00')
+  await expect(entry).not.toContainText('Paid in USD')
 
   // A send's card rests on Abbaas's side: the money was received by him, so the
   // card names that side and lies wholly right of the centre line, which at this
@@ -265,6 +312,27 @@ test('MVR slides the pill and opens the rate card beside In dollars, and the wor
   expect(row.note).toBeNull()
   expect(row.person_id).toBe(savedPersonId)
   expect(row.person_name).toBe(SAVED_PERSON)
+  // The untouched Method row stored its default, which is what the card names.
+  expect(await readStoredMethods()).toEqual(['transfer'])
+
+  // ----- The sheet keeps the rufiyaa figure and the rate the card no longer shows. -----
+  await entry.click()
+  await atRest(page)
+
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toHaveCount(1)
+  await expect(sheet).toBeVisible()
+  await expect(sheet.locator('[data-sheet-usd]')).toHaveText('$500.00')
+  await expect(sheet.locator('[data-sheet-mvr]')).toContainText('MVR 10,000')
+  await expect(sheet.locator('[data-sheet-rate]')).toContainText('20.00')
+  await expect(sheet.locator('[data-sheet-person]')).toContainText(SAVED_PERSON)
+  await expect(sheet.locator('[data-sheet-method]')).toContainText('Transfer')
+
+  await sheet.getByRole('button', { name: 'Close' }).click()
+  await atRest(page)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  // Reading the entry wrote nothing.
+  expect(await readEntries(stack, account)).toHaveLength(1)
 
   // ----- Switching back to USD closes the rate row again. -----
   const reopened = await openSendForm(page)
